@@ -873,3 +873,6 @@ textarea.field { resize: vertical; min-height: 84px; line-height: 1.45; }
 
 /* For-you / Following tabs sit flush under the feed header */
 .feed-scope { margin-top: 0; }
+
+/* Clickable @mentions / #hashtags */
+.link { cursor: pointer; }

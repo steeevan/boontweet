@@ -30,6 +30,7 @@ const postRoutes = require('./routes/posts');
 const userRoutes = require('./routes/users');
 const mediaRoutes = require('./routes/media');
 const sportsRoutes = require('./routes/sports');
+const searchRoutes = require('./routes/search');
 
 const app = express();
 
@@ -136,6 +137,7 @@ app.use('/api/posts', postRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/sports', sportsRoutes);
+app.use('/api/search', searchRoutes);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 

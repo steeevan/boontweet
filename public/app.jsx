@@ -123,6 +123,10 @@ async function apiGetFeed(before, scope) {
 }
 async function apiFollow(username) { if (USE_FAKE_DATA) return; await fetchJson('/api/users/' + encodeURIComponent(username) + '/follow', { method: 'POST' }); }
 async function apiUnfollow(username) { if (USE_FAKE_DATA) return; await fetchJson('/api/users/' + encodeURIComponent(username) + '/follow', { method: 'DELETE' }); }
+async function apiSearch(q) {
+  if (USE_FAKE_DATA) { const k = q.toLowerCase().replace(/^#/, ''); return { users: [], posts: FAKE_TWEETS.filter((t) => t.content.toLowerCase().includes(k)) }; }
+  return await fetchJson('/api/search?q=' + encodeURIComponent(q));
+}
 async function apiGetProfile(username) {
   if (USE_FAKE_DATA) {
     const posts = FAKE_TWEETS.filter((t) => t.username === username);
@@ -174,6 +178,25 @@ function timeAgo(iso) {
 }
 function fmt(n) { n = n || 0; if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace('.0', '') + 'K'; return String(n); }
 
+// Turn @mentions and #hashtags inside tweet text into clickable links.
+// @name -> that profile; #tag -> a search for that tag.
+function renderRich(text, go) {
+  if (!text || !go) return text;
+  const s = String(text);
+  const out = [];
+  const re = /[@#]\w+/g;
+  let last = 0, m, i = 0;
+  while ((m = re.exec(s))) {
+    if (m.index > last) out.push(s.slice(last, m.index));
+    const tok = m[0];
+    const onClick = tok[0] === '@' ? () => go('profile', tok.slice(1)) : () => go('search', tok);
+    out.push(<a key={i++} className="link" onClick={(e) => { e.stopPropagation(); onClick(); }}>{tok}</a>);
+    last = m.index + tok.length;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+}
+
 // ---- Icons (stroke, currentColor) ----
 const PATHS = {
   home: 'M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
@@ -215,7 +238,7 @@ function Avatar({ user, handle, size }) {
 }
 
 // ---- Tweet card ----
-function Tweet({ tweet, currentUser, isCard, onOpen, onLike, onRt, onDelete, onShare, onOpenProfile }) {
+function Tweet({ tweet, currentUser, isCard, onOpen, onLike, onRt, onDelete, onShare, onOpenProfile, go }) {
   const name = tweet.display_name || tweet.username;
   const isMine = currentUser && currentUser.username === tweet.username;
   const stop = (e, fn) => { e.stopPropagation(); fn && fn(); };
@@ -232,7 +255,7 @@ function Tweet({ tweet, currentUser, isCard, onOpen, onLike, onRt, onDelete, onS
           <span className="time">{timeAgo(tweet.created_at)}</span>
           {isMine && <button className="iconbtn more" title="Delete tweet" onClick={(e) => stop(e, () => onDelete(tweet.id))}><Icon name="more" /></button>}
         </div>
-        <p className="tweet-text">{tweet.content}</p>
+        <p className="tweet-text">{renderRich(tweet.content, go)}</p>
         {tweet.image_url && (
           <div className="media bare">
             <img src={tweet.image_url} alt="" onError={(e) => { const m = e.target.closest('.media'); if (m) m.style.display = 'none'; }} />
@@ -315,7 +338,7 @@ function Compose({ currentUser, onPost, placeholder = "What's happening?", reply
 }
 
 // ---- Reply (comment) row in tweet detail ----
-function ReplyRow({ c, currentUser, onDelete, onOpenProfile }) {
+function ReplyRow({ c, currentUser, onDelete, onOpenProfile, go }) {
   const isMine = currentUser && currentUser.username === c.username;
   return (
     <div className="reply-row">
@@ -328,7 +351,7 @@ function ReplyRow({ c, currentUser, onDelete, onOpenProfile }) {
           <span className="time">{timeAgo(c.created_at)}</span>
           {isMine && <button className="reply-del" title="Delete reply" onClick={() => onDelete(c.id)}>×</button>}
         </div>
-        <p className="tweet-text">{c.content}</p>
+        <p className="tweet-text">{renderRich(c.content, go)}</p>
       </div>
     </div>
   );
@@ -337,6 +360,7 @@ function ReplyRow({ c, currentUser, onDelete, onOpenProfile }) {
 // ---- Navigation ----
 const NAV = [
   { id: 'feed', label: 'Home', icon: 'home' },
+  { id: 'search', label: 'Search', icon: 'search' },
   { id: 'sports', label: 'Sports', icon: 'trophy' },
   { id: 'profile', label: 'Profile', icon: 'user' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
@@ -377,12 +401,13 @@ function TopNav({ route, currentUser, go }) {
           <div className="brand-word">boon<b>tweet</b></div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
+          <button className="iconbtn" title="Search" onClick={() => go('search')}><Icon name="search" /></button>
           <button className="iconbtn" title="Settings" onClick={() => go('settings')}><Icon name="settings" /></button>
           <button className="iconbtn" onClick={() => go('profile', currentUser.username)} aria-label="Profile"><Avatar user={currentUser} size={34} /></button>
         </div>
       </div>
       <div className="topnav-tabs">
-        {NAV.filter((n) => n.id !== 'settings').map((n) => (
+        {NAV.filter((n) => n.id !== 'settings' && n.id !== 'search').map((n) => (
           <button key={n.id} className="top-tab" data-active={route.name === n.id ? '1' : '0'}
             onClick={() => go(n.id, n.id === 'profile' ? currentUser.username : null)}>{n.label}</button>
         ))}
@@ -392,9 +417,14 @@ function TopNav({ route, currentUser, go }) {
 }
 
 function Aside({ go }) {
+  const [q, setQ] = useState('');
   return (
     <aside className="aside">
-      <div className="search"><Icon name="search" /><input placeholder="Search BoonTweet" /></div>
+      <div className="search">
+        <Icon name="search" />
+        <input placeholder="Search BoonTweet" value={q} onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) go('search', q.trim()); }} />
+      </div>
       <div className="widget">
         <h3>Trending</h3>
         {TRENDS.map((t, i) => (
@@ -491,7 +521,7 @@ function FeedScreen({ posts, currentUser, cards, onPost, handlers, go, onLoadMor
             {t.retweeted_by && (
               <div className="retweet-tag" style={{ paddingTop: 'var(--pad)' }}><Icon name="rt" /> {t.retweeted_by} retweeted</div>
             )}
-            <Tweet tweet={t} currentUser={currentUser} isCard={cards} onOpenProfile={(h) => go('profile', h)} {...handlers} />
+            <Tweet tweet={t} currentUser={currentUser} isCard={cards} go={go} onOpenProfile={(h) => go('profile', h)} {...handlers} />
           </React.Fragment>
         ))}
         {posts.length === 0 && <div className="empty">{emptyMsg}</div>}
@@ -548,7 +578,7 @@ function TweetDetailScreen({ tweet: initial, currentUser, cards, onBack, onChang
             <div className="handle">@{tw.username}</div>
           </div>
         </div>
-        <p className="detail-text">{tw.content}</p>
+        <p className="detail-text">{renderRich(tw.content, go)}</p>
         {tw.image_url && <div className="media bare" style={{ marginTop: 16 }}><img src={tw.image_url} alt="" onError={(e) => { const m = e.target.closest('.media'); if (m) m.style.display = 'none'; }} /></div>}
         <div className="detail-meta">
           <span><b>{new Date(tw.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric', year: 'numeric' })}</b></span>
@@ -567,7 +597,7 @@ function TweetDetailScreen({ tweet: initial, currentUser, cards, onBack, onChang
       <div className="feed-list">
         {comments === null ? <div className="empty">Loading replies…</div>
           : comments.length === 0 ? <div className="empty">No replies yet — be the first.</div>
-            : comments.map((c) => <ReplyRow key={c.id} c={c} currentUser={currentUser} onDelete={delReply} onOpenProfile={(h) => go('profile', h)} />)}
+            : comments.map((c) => <ReplyRow key={c.id} c={c} currentUser={currentUser} onDelete={delReply} onOpenProfile={(h) => go('profile', h)} go={go} />)}
       </div>
     </div>
   );
@@ -638,7 +668,7 @@ function ProfileScreen({ username, currentUser, cards, handlers, go }) {
           data.posts.map((t) => (
             <React.Fragment key={(t.retweeted_by || 'orig') + '-' + t.id}>
               {t.retweeted_by && <div className="retweet-tag" style={{ paddingTop: 'var(--pad)' }}><Icon name="rt" /> {t.retweeted_by} retweeted</div>}
-              <Tweet tweet={t} currentUser={currentUser} isCard={cards} {...localHandlers} onLike={(tw) => handlers.onLike(tw, load)} onRt={(tw) => handlers.onRt(tw, load)} onDelete={(id) => handlers.onDelete(id, load)} />
+              <Tweet tweet={t} currentUser={currentUser} isCard={cards} go={go} {...localHandlers} onLike={(tw) => handlers.onLike(tw, load)} onRt={(tw) => handlers.onRt(tw, load)} onDelete={(id) => handlers.onDelete(id, load)} />
             </React.Fragment>
           ))
         ) : (
@@ -756,6 +786,66 @@ function SportsScreen() {
         </div>
         {body}
       </div>
+    </div>
+  );
+}
+
+function SearchScreen({ initialQuery, currentUser, cards, handlers, go }) {
+  const [q, setQ] = useState(initialQuery || '');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => { if (initialQuery != null) setQ(initialQuery); }, [initialQuery]);
+
+  async function runSearch(term) {
+    const t = (term != null ? term : q).trim();
+    if (!t) { setData(null); return; }
+    setLoading(true);
+    try { setData(await apiSearch(t)); } catch (e) { console.error(e); } finally { setLoading(false); }
+  }
+  // Debounced search-as-you-type.
+  useEffect(() => {
+    const term = q.trim();
+    if (!term) { setData(null); return; }
+    const tid = setTimeout(() => runSearch(term), 300);
+    return () => clearTimeout(tid);
+  }, [q]);
+
+  const reload = () => runSearch();
+  const th = {
+    onOpen: handlers.onOpen,
+    onShare: handlers.onShare,
+    onLike: (tw) => handlers.onLike(tw, reload),
+    onRt: (tw) => handlers.onRt(tw, reload),
+    onDelete: (id) => handlers.onDelete(id, reload),
+  };
+
+  return (
+    <div className="feed-col">
+      <div className="col-head"><div><h1>Search</h1></div></div>
+      <div className="search" style={{ margin: 'var(--pad)' }}>
+        <Icon name="search" />
+        <input autoFocus value={q} placeholder="Search people and tweets" onChange={(e) => setQ(e.target.value)} />
+      </div>
+      {loading && <div className="empty">Searching…</div>}
+      {!loading && !data && <div className="empty">Find people (name or @handle) and tweets — try a #hashtag.</div>}
+      {!loading && data && (
+        <>
+          {data.users.length > 0 && <div className="section-label">People</div>}
+          {data.users.map((u) => (
+            <div className="who" key={u.username} style={{ cursor: 'pointer', padding: '10px var(--pad)' }} onClick={() => go('profile', u.username)}>
+              <Avatar user={u} size={44} />
+              <div className="info"><div className="n">{u.display_name || u.username}</div><div className="h">@{u.username}</div></div>
+            </div>
+          ))}
+          {data.posts.length > 0 && <div className="section-label">Tweets</div>}
+          <div className={'feed-list' + (cards ? ' cards' : '')}>
+            {data.posts.map((t) => (
+              <Tweet key={t.id} tweet={t} currentUser={currentUser} isCard={cards} go={go} onOpenProfile={(h) => go('profile', h)} {...th} />
+            ))}
+          </div>
+          {data.users.length === 0 && data.posts.length === 0 && <div className="empty">No results for "{q.trim()}".</div>}
+        </>
+      )}
     </div>
   );
 }
@@ -985,6 +1075,8 @@ function App() {
     screen = <TweetDetailScreen tweet={route.params} currentUser={currentUser} cards={cards} onBack={() => go('feed')} onChanged={reloadFeed} go={go} />;
   } else if (route.name === 'sports') {
     screen = <SportsScreen />;
+  } else if (route.name === 'search') {
+    screen = <SearchScreen initialQuery={route.params} currentUser={currentUser} cards={cards} handlers={genHandlers} go={go} />;
   } else if (route.name === 'settings') {
     screen = <SettingsScreen currentUser={currentUser} onSaved={(u) => { setCurrentUser(u); flash('Profile saved'); }} onLogout={handleLogout} go={go} />;
   } else if (route.name === 'profile') {
