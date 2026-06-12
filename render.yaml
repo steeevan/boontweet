@@ -32,3 +32,7 @@ services:
       # Let Render generate a strong, random session secret.
       - key: SESSION_SECRET
         generateValue: true
+      # Optional: token for the World Cup Sports tab (football-data.org).
+      # sync:false => Render leaves it blank for you to fill in the dashboard.
+      - key: FOOTBALL_DATA_API_KEY
+        sync: false

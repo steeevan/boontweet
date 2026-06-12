@@ -808,3 +808,131 @@ body[data-effect="stars"]::after {
 .image-tools .image-input {
   margin-top: 0;
 }
+
+/* ==========================================================================
+   Phase 3 additions: World Cup Sports tab
+   ========================================================================== */
+.sports-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 6px 0;
+}
+.sports-subtabs {
+  display: flex;
+  gap: 6px;
+}
+.sports-subtabs button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.sports-subtabs button.active {
+  color: #07111a;
+  background: var(--accent);
+  border-color: transparent;
+}
+.standings-title {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 15px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+/* ---- A single match row ---- */
+.match {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.match:last-child {
+  border-bottom: none;
+}
+.match-team {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.match-team.home {
+  justify-content: flex-end;
+  text-align: right;
+}
+.crest {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+.crest.sm {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.match-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 86px;
+}
+.match-score {
+  font-weight: 800;
+  font-size: 18px;
+  font-family: "Space Grotesk", sans-serif;
+}
+.match-vs {
+  color: var(--muted);
+  font-size: 13px;
+}
+.match-status {
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+.match-status.live {
+  color: #fb7185;
+  text-shadow: 0 0 8px rgba(251, 113, 133, 0.6);
+}
+.match-status.ft,
+.match-status.upcoming {
+  color: var(--muted);
+}
+
+/* ---- Standings table ---- */
+.standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.standings th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-align: center;
+  padding: 4px;
+}
+.standings td {
+  text-align: center;
+  padding: 6px 4px;
+  border-top: 1px solid var(--border);
+}
+.standings td.team {
+  text-align: left;
+}
+.standings td.pos {
+  color: var(--muted);
+  width: 24px;
+}
+.standings td.pts {
+  font-weight: 800;
+}

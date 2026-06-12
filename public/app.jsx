@@ -156,6 +156,16 @@ async function apiDeleteComment(postId, commentId) {
   await fetchJson("/api/posts/" + postId + "/comments/" + commentId, { method: "DELETE" });
 }
 
+// ---- Sports (World Cup 2026) ----
+async function apiGetSports(which) {
+  if (USE_FAKE_DATA) {
+    return which === "standings"
+      ? { configured: true, groups: SAMPLE_STANDINGS }
+      : { configured: true, matches: SAMPLE_MATCHES };
+  }
+  return await fetchJson("/api/sports/" + which);
+}
+
 // ===========================================================================
 // PART 3 — COMPONENTS
 // ===========================================================================
@@ -434,13 +444,141 @@ function Tabs({ active, onSelect }) {
   );
 }
 
-// ---- SportsTab (placeholder until Phase 3 wires the live World Cup API) ----
-function SportsTab() {
+// ---- Sports tab: live World Cup 2026 matches + standings ----
+
+// Sample data used only in fake mode (so the tab demos with no backend/key).
+const SAMPLE_MATCHES = [
+  { id: 1, utcDate: new Date().toISOString(), status: "IN_PLAY", group: "GROUP_A", home: { name: "USA", crest: null }, away: { name: "MEX", crest: null }, homeScore: 1, awayScore: 1 },
+  { id: 2, utcDate: new Date(Date.now() + 3 * 3600 * 1000).toISOString(), status: "TIMED", group: "GROUP_B", home: { name: "BRA", crest: null }, away: { name: "ARG", crest: null }, homeScore: null, awayScore: null },
+  { id: 3, utcDate: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), status: "FINISHED", group: "GROUP_A", home: { name: "CAN", crest: null }, away: { name: "FRA", crest: null }, homeScore: 0, awayScore: 2 },
+];
+const SAMPLE_STANDINGS = [
+  { group: "GROUP_A", stage: "GROUP_STAGE", table: [
+    { position: 1, team: "FRA", crest: null, played: 1, won: 1, draw: 0, lost: 0, gd: 2, points: 3 },
+    { position: 2, team: "USA", crest: null, played: 1, won: 0, draw: 1, lost: 0, gd: 0, points: 1 },
+    { position: 3, team: "MEX", crest: null, played: 1, won: 0, draw: 1, lost: 0, gd: 0, points: 1 },
+    { position: 4, team: "CAN", crest: null, played: 1, won: 0, draw: 0, lost: 1, gd: -2, points: 0 },
+  ] },
+];
+
+function matchStatus(status) {
+  if (status === "IN_PLAY" || status === "PAUSED") return { label: "LIVE", cls: "live" };
+  if (status === "FINISHED") return { label: "FT", cls: "ft" };
+  return { label: "", cls: "upcoming" }; // SCHEDULED / TIMED -> show kickoff time
+}
+
+function MatchRow({ m }) {
+  const s = matchStatus(m.status);
+  const hasScore = m.homeScore !== null && m.awayScore !== null;
+  const time = new Date(m.utcDate).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   return (
-    <div className="card sports-placeholder">
-      <div className="sports-emoji">⚽🏆</div>
-      <h2>World Cup 2026</h2>
-      <p className="muted">Live fixtures, scores, and standings are coming in the next update.</p>
+    <div className="match">
+      <div className="match-team home">
+        <span>{m.home.name}</span>
+        {m.home.crest && <img className="crest" src={m.home.crest} alt="" />}
+      </div>
+      <div className="match-mid">
+        {hasScore ? <span className="match-score">{m.homeScore} – {m.awayScore}</span> : <span className="match-vs">vs</span>}
+        <span className={"match-status " + s.cls}>{s.label || time}</span>
+      </div>
+      <div className="match-team away">
+        {m.away.crest && <img className="crest" src={m.away.crest} alt="" />}
+        <span>{m.away.name}</span>
+      </div>
+    </div>
+  );
+}
+
+function MatchSection({ title, items }) {
+  return (
+    <div className="card sports-section">
+      <h3 className="standings-title">{title}</h3>
+      {items.map((m) => <MatchRow key={m.id} m={m} />)}
+    </div>
+  );
+}
+
+function Standings({ groups }) {
+  if (!groups || groups.length === 0) return <div className="empty">No standings available yet.</div>;
+  return (
+    <div>
+      {groups.map((g) => (
+        <div className="card" key={(g.group || g.stage) + ""}>
+          <h3 className="standings-title">{(g.group || g.stage || "Table").replace(/_/g, " ")}</h3>
+          <table className="standings">
+            <thead><tr><th></th><th></th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead>
+            <tbody>
+              {g.table.map((r) => (
+                <tr key={r.position}>
+                  <td className="pos">{r.position}</td>
+                  <td className="team">{r.crest && <img className="crest sm" src={r.crest} alt="" />}{r.team}</td>
+                  <td>{r.played}</td><td>{r.won}</td><td>{r.draw}</td><td>{r.lost}</td><td>{r.gd}</td><td className="pts">{r.points}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SportsTab() {
+  const [sub, setSub] = useState("matches");
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setData(null); setError("");
+    apiGetSports(sub).then(setData).catch((e) => setError(e.message));
+  }, [sub]);
+
+  function renderMatches() {
+    const matches = data.matches || [];
+    if (matches.length === 0) return <div className="empty">No matches found.</div>;
+    const byDate = (a, b) => new Date(a.utcDate) - new Date(b.utcDate);
+    const live = matches.filter((m) => m.status === "IN_PLAY" || m.status === "PAUSED");
+    const upcoming = matches.filter((m) => m.status === "TIMED" || m.status === "SCHEDULED").sort(byDate);
+    const finished = matches.filter((m) => m.status === "FINISHED").sort((a, b) => byDate(b, a));
+    return (
+      <>
+        {live.length > 0 && <MatchSection title="🔴 Live now" items={live} />}
+        {upcoming.length > 0 && <MatchSection title="Upcoming" items={upcoming.slice(0, 15)} />}
+        {finished.length > 0 && <MatchSection title="Results" items={finished.slice(0, 15)} />}
+      </>
+    );
+  }
+
+  return (
+    <div>
+      <div className="sports-header">
+        <h2 className="page-title" style={{ margin: 0 }}>⚽ World Cup 2026</h2>
+        <div className="sports-subtabs">
+          <button className={sub === "matches" ? "active" : ""} onClick={() => setSub("matches")}>Matches</button>
+          <button className={sub === "standings" ? "active" : ""} onClick={() => setSub("standings")}>Standings</button>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="error">{error}</div>
+      ) : !data ? (
+        <div className="empty">Loading live data…</div>
+      ) : data.configured === false ? (
+        <div className="card sports-placeholder">
+          <div className="sports-emoji">🔑</div>
+          <h2>Almost there</h2>
+          <p className="muted">
+            Live World Cup data needs a free API key. Get one at football-data.org, set the{" "}
+            <code>FOOTBALL_DATA_API_KEY</code> environment variable, and redeploy.
+          </p>
+        </div>
+      ) : data.error ? (
+        <div className="error">{data.error}</div>
+      ) : sub === "matches" ? (
+        renderMatches()
+      ) : (
+        <Standings groups={data.groups} />
+      )}
     </div>
   );
 }

@@ -4,19 +4,22 @@ A minimal Twitter clone built for learning full-stack web development.
 
 **Stack:** React (loaded from a CDN, no build step) · Node.js + Express · PostgreSQL
 
-You can post tweets (with an optional image), read a feed, like/unlike, create
-an account, log in, view user profiles, and edit your profile. It uses a
-**Dark Neon** theme with auto-generated gradient avatars. The whole thing runs
-from a **single server**.
+A social app with accounts, a feed, likes, replies, retweets, profiles, image
+uploads, deep profile customization, and a **live World Cup 2026** tab. It uses
+a **Dark Neon** theme (plus other themes) and runs from a **single server**.
 
 ### Features
 
 - 🔐 **Accounts** — sign up, log in, log out (passwords hashed with bcrypt).
-- 📝 **Tweets** — post up to 280 chars, optionally with an image (paste a URL).
-- ❤️ **Likes** — like / unlike, with a per-user "did I like this?" flag.
-- 👤 **Profiles** — each user has a page with their avatar, name, bio, and tweets.
-- ⚙️ **Settings** — edit your display name and bio.
-- 🎨 **Avatars** — generated from the username, so no image uploads are needed.
+- 📝 **Tweets** — post up to 280 chars, with an optional image (upload a file or paste a URL).
+- ❤️ **Likes**, 💬 **Replies**, and 🔁 **Retweets** — retweets show in the feed with a "retweeted by" label.
+- 🧭 **Tabs** — a **Feed** tab and a **Sports** tab.
+- ⚽ **World Cup 2026** — live fixtures, scores, and standings (via football-data.org).
+- 👤 **Profiles** — avatar, banner, display name, bio, and the user's tweets + retweets.
+- 🖼️ **Image uploads** — stored in PostgreSQL and served back from the app.
+- 🎨 **Customization** — upload a profile photo + banner, pick a color **theme**,
+  an animated **mascot** avatar, and an ambient **background effect**.
+- 🪄 **Avatars** — uploaded photo → animated mascot → auto-generated gradient initial.
 
 ---
 
@@ -28,12 +31,14 @@ public/          → the frontend (served as static files by the server)
   style.css      → hand-written styles, no framework
   app.jsx        → the React app (fake data first, then real fetch calls)
 src/
-  server.js      → the Express app + server start
+  server.js      → the Express app + server start (auto-loads schema on boot)
   db.js          → the one shared Postgres connection pool
   routes/
     auth.js      → signup / login / logout / me
-    posts.js     → the feed, posting (with images), deleting, liking
-    users.js     → public profiles + editing your own profile
+    posts.js     → feed, tweets, likes, retweets, comments
+    users.js     → public profiles + editing your own profile/appearance
+    media.js     → image upload + serving (stored in Postgres)
+    sports.js    → World Cup 2026 data, proxied from football-data.org
 schema.sql       → the database tables
 .env.example     → the environment variables you need
 ```
@@ -130,16 +135,30 @@ SQL-injection attacks don't work. This is the safe default we want to teach.
 | `POST /api/auth/login`       | Log in                                | no            |
 | `POST /api/auth/logout`      | Log out                               | no            |
 | `GET  /api/auth/me`          | Who am I? (`{ user }` or `null`)      | no            |
-| `GET  /api/posts`            | Feed, newest first                    | no            |
+| `GET  /api/posts`            | Feed (tweets + retweets), newest first | no           |
 | `POST /api/posts`            | Create a tweet (1–280 chars, optional `image_url`) | **yes** |
 | `DELETE /api/posts/:id`      | Delete your own tweet                 | **yes**       |
-| `POST /api/posts/:id/like`   | Like a tweet                          | **yes**       |
-| `DELETE /api/posts/:id/like` | Unlike a tweet                        | **yes**       |
-| `GET  /api/users/:username`  | A profile + that user's tweets        | no            |
-| `PUT  /api/users/me`         | Edit your display name + bio          | **yes**       |
+| `POST/DELETE /api/posts/:id/like`    | Like / unlike a tweet         | **yes**       |
+| `POST/DELETE /api/posts/:id/retweet` | Retweet / un-retweet          | **yes**       |
+| `GET  /api/posts/:id/comments`       | List replies                  | no            |
+| `POST /api/posts/:id/comments`       | Add a reply                   | **yes**       |
+| `DELETE /api/posts/:id/comments/:cid`| Delete your own reply         | **yes**       |
+| `GET  /api/users/:username`  | A profile + that user's tweets/retweets | no          |
+| `PUT  /api/users/me`         | Edit profile + appearance             | **yes**       |
+| `POST /api/media`            | Upload an image (form field `image`)  | **yes**       |
+| `GET  /api/media/:id`        | Serve a stored image                  | no            |
+| `GET  /api/sports/matches`   | World Cup matches/scores              | no            |
+| `GET  /api/sports/standings` | World Cup group standings             | no            |
 
 Each tweet returned by the feed/profile includes `username`, `display_name`,
-`image_url`, `like_count`, and `liked_by_me`.
+`avatar_url`, `avatar_anim`, `image_url`, `like_count`, `comment_count`,
+`retweet_count`, `liked_by_me`, `retweeted_by_me`, and `retweeted_by`.
+
+### Data model
+
+`users` (now incl. `display_name`, `bio`, `avatar_url`, `banner_url`, `theme`,
+`avatar_anim`, `page_effect`) · `posts` (incl. `image_url`) · `likes` ·
+`comments` · `retweets` · `media` (uploaded image bytes) · `session`.
 
 ---
 
@@ -168,13 +187,15 @@ Render can host both the Node server and the Postgres database for free.
 
 On the web service's **Environment** tab, add:
 
-| Key              | Value                                                       |
-| ---------------- | ---------------------------------------------------------- |
-| `DATABASE_URL`   | the **Internal Database URL** you copied above             |
-| `SESSION_SECRET` | a long random string (generate one as shown above)         |
+| Key                     | Value                                                       |
+| ----------------------- | ---------------------------------------------------------- |
+| `DATABASE_URL`          | the **Internal Database URL** you copied above             |
+| `SESSION_SECRET`        | a long random string (generate one as shown above)         |
+| `FOOTBALL_DATA_API_KEY` | *(optional)* free token from football-data.org for the Sports tab |
 
 > You do **not** need to set `PORT` — Render provides it automatically, and
-> the app already reads it from the environment.
+> the app already reads it from the environment. Without
+> `FOOTBALL_DATA_API_KEY`, the Sports tab simply shows a "add your key" note.
 
 ### 4. Deploy & open your app
 
