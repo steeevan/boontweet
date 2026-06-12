@@ -416,6 +416,26 @@ function TopNav({ route, currentUser, go }) {
   );
 }
 
+// Bottom tab bar — only visible on phones (CSS shows it under 640px).
+function MobileNav({ route, currentUser, go }) {
+  const items = [
+    { id: 'feed', icon: 'home' },
+    { id: 'search', icon: 'search' },
+    { id: 'sports', icon: 'trophy' },
+    { id: 'profile', icon: 'user' },
+  ];
+  return (
+    <nav className="mobile-nav">
+      {items.map((n) => (
+        <button key={n.id} className="mnav-item" data-active={route.name === n.id ? '1' : '0'}
+          aria-label={n.id} onClick={() => go(n.id, n.id === 'profile' ? currentUser.username : null)}>
+          <Icon name={n.icon} />
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 function Aside({ go }) {
   const [q, setQ] = useState('');
   return (
@@ -1056,6 +1076,12 @@ function App() {
     const themeAccent = (THEME_BY_ID[tweaks.theme] || {}).accent;
     if (tweaks.accent && tweaks.accent !== themeAccent) r.style.setProperty('--accent-2', tweaks.accent);
     else r.style.removeProperty('--accent-2');
+    // Match the mobile browser chrome (status/address bar) to the theme bg.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      const bg = getComputedStyle(r).getPropertyValue('--bg').trim();
+      if (bg) meta.setAttribute('content', bg);
+    }
   }, [tweaks]);
 
   // wrap() pairs the current screen with the floating Appearance panel (the
@@ -1094,8 +1120,17 @@ function App() {
         <Aside go={go} />
       </div>
       {toast && <div className="toast">{toast}</div>}
+      <MobileNav route={route} currentUser={currentUser} go={go} />
     </div>
   );
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+// Register the service worker (PWA: installable + offline). No-op if the
+// browser doesn't support it or registration fails.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+  });
+}

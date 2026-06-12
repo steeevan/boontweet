@@ -876,3 +876,46 @@ textarea.field { resize: vertical; min-height: 84px; line-height: 1.45; }
 
 /* Clickable @mentions / #hashtags */
 .link { cursor: pointer; }
+
+/* ============================================================
+   MOBILE — phone layout + bottom tab bar (≤ 640px)
+   ============================================================ */
+.mobile-nav { display: none; }
+
+@media (max-width: 640px) {
+  /* Single column; hide the desktop sidebar / aside / top nav. */
+  [data-nav] .app { grid-template-columns: 1fr !important; }
+  .sidebar, .aside, .topnav { display: none !important; }
+  .feed-col { border-inline: 0 !important; padding-bottom: 78px; }
+  /* Always show the column header (it holds back buttons / titles). */
+  .feed-col > .col-head { display: flex !important; }
+
+  /* Bottom tab bar. */
+  .mobile-nav {
+    display: flex;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    background: var(--nav-bg, color-mix(in srgb, var(--bg) 92%, transparent));
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .mnav-item {
+    flex: 1; display: grid; place-items: center; padding: 13px 0;
+    background: none; border: 0; cursor: pointer; color: var(--muted);
+  }
+  .mnav-item .ico { width: 26px; height: 26px; }
+  .mnav-item[data-active="1"] { color: var(--accent); }
+
+  /* Keep the Appearance button + panel clear of the bottom bar. */
+  .cz-fab { bottom: calc(74px + env(safe-area-inset-bottom, 0px)); }
+  .cz-panel { bottom: calc(138px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; width: auto; }
+
+  /* Bigger touch targets for the tweet action row. */
+  .act .ico-wrap { width: 40px; height: 40px; margin: -10px; }
+  .actions { max-width: none; }
+
+  /* Tighter side insets for cards on small screens. */
+  .tweet.is-card, .feed-list.cards .compose, .match, .standings, .sports-hero {
+    margin-left: 10px; margin-right: 10px;
+  }
+}

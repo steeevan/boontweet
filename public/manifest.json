@@ -1,0 +1,14 @@
+{
+  "name": "BoonTweet",
+  "short_name": "BoonTweet",
+  "description": "A tiny Twitter clone with 8 themes and a live World Cup 2026 tab.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07070d",
+  "theme_color": "#07070d",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
