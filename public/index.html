@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BoonTweet</title>
+    <!-- Fonts for the "Dark Neon" theme: Space Grotesk (headings/logo) + Inter (body). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- React draws the entire app inside this one empty div. -->
+    <div id="root"></div>
+
+    <!-- ===================================================================
+         React, loaded straight from a CDN — NO build step required.
+         react.development.js gives us friendly error messages while learning.
+         =================================================================== -->
+    <script
+      crossorigin
+      src="https://unpkg.com/react@18/umd/react.development.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"
+    ></script>
+
+    <!-- ===================================================================
+         Babel lets us write modern JSX (the HTML-in-JavaScript syntax)
+         and translates it IN THE BROWSER. This is great for learning, but
+         it is SLOW and not meant for real production traffic — a real app
+         would compile JSX ahead of time with a build tool like Vite.
+         =================================================================== -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Our app. type="text/babel" tells Babel to translate this file.
+         data-presets="react" tells it to expect JSX. -->
+    <script type="text/babel" data-presets="react" src="app.jsx"></script>
+  </body>
+</html>

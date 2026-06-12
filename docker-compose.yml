@@ -1,0 +1,43 @@
+# ============================================================================
+# docker-compose.yml — runs PostgreSQL for BoonTweet inside a container.
+# ============================================================================
+# This means you do NOT have to install PostgreSQL on your computer.
+#
+#   docker compose up -d        # start the database in the background
+#   npm start                   # run the app (connects to this database)
+#   docker compose down         # stop the database  (your data is KEPT)
+#   docker compose down -v      # stop AND erase all data (totally fresh start)
+#
+# The schema (schema.sql) is loaded AUTOMATICALLY the first time the database
+# is created, so there is no manual "psql -f schema.sql" step.
+# ============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: boontweet-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: boontweet
+      POSTGRES_PASSWORD: boontweet
+      POSTGRES_DB: boontweet
+    ports:
+      # host:container — we expose 5433 on your machine so we don't collide
+      # with any PostgreSQL you might already have on the default port 5432.
+      - "5433:5432"
+    volumes:
+      # Keep the data on disk so it survives "docker compose down".
+      - boontweet_pgdata:/var/lib/postgresql/data
+      # Files in this special folder run ONCE, when the database is first
+      # created. Mounting schema.sql here auto-creates our tables.
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      # Lets you (and tools) know when the DB is actually ready for connections.
+      test: ["CMD-SHELL", "pg_isready -U boontweet -d boontweet"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+# A named volume is where Postgres stores its data between runs.
+volumes:
+  boontweet_pgdata:

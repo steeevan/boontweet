@@ -1,0 +1,456 @@
+/* ==========================================================================
+   BoonTweet — "Dark Neon" theme. Hand-written, no CSS framework.
+   --------------------------------------------------------------------------
+   The look: a deep dark background with two soft glowing blobs (cyan +
+   magenta), "glassy" semi-transparent cards, and neon accents on anything
+   interactive. All the colors live in the variables below so you can
+   re-theme the whole app by editing a few lines.
+   ========================================================================== */
+
+:root {
+  --bg: #070b16;            /* near-black navy */
+  --card: rgba(255, 255, 255, 0.04);   /* translucent "glass" */
+  --card-hover: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.10);
+  --text: #e7ecf3;
+  --muted: #8b95a7;
+  --cyan: #22d3ee;
+  --magenta: #e879f9;
+  --pink: #f472b6;
+  --danger: #fb7185;
+  --accent: linear-gradient(135deg, #22d3ee, #e879f9);  /* the signature gradient */
+  --radius: 18px;
+  --glow-cyan: 0 0 0 1px rgba(34, 211, 238, 0.5), 0 0 18px rgba(34, 211, 238, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  color: var(--text);
+  line-height: 1.45;
+
+  /* The dark base color, plus two fixed radial "glow" blobs behind everything. */
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(40rem 40rem at 15% -10%, rgba(34, 211, 238, 0.18), transparent 60%),
+    radial-gradient(38rem 38rem at 100% 0%, rgba(232, 121, 249, 0.18), transparent 55%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* The whole app sits in a centered, phone-width column. */
+.app {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 0 14px 80px;
+}
+
+/* ---- Header ---------------------------------------------------------------
+   A sticky, frosted bar at the top. backdrop-filter blurs whatever scrolls
+   behind it for that "glass" effect. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 6px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(7, 11, 22, 0.7);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  letter-spacing: -0.02em;
+
+  /* Make the text itself the neon gradient. */
+  background: var(--accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---- Cards (composer, tweets, forms) ---- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 16px;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.card:hover {
+  background: var(--card-hover);
+}
+
+/* A flex row that puts an avatar on the left and content on the right. */
+.row {
+  display: flex;
+  gap: 12px;
+}
+.row-main {
+  flex: 1;
+  min-width: 0; /* allows long words to wrap instead of overflowing */
+}
+
+/* ---- Avatars --------------------------------------------------------------
+   We don't store uploaded pictures. Instead each avatar is a colored gradient
+   circle with the user's first initial. The gradient color is derived from
+   the username in app.jsx, so every user gets a consistent, unique look. */
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #0b1020;
+  font-weight: 700;
+  font-family: "Space Grotesk", sans-serif;
+  flex-shrink: 0;
+  user-select: none;
+}
+.avatar.clickable {
+  cursor: pointer;
+}
+
+/* ---- Compose box ---- */
+.composer textarea {
+  width: 100%;
+  border: none;
+  resize: vertical;
+  font-size: 18px;
+  font-family: inherit;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  min-height: 60px;
+}
+.composer textarea::placeholder {
+  color: var(--muted);
+}
+
+.composer-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.composer-footer .spacer {
+  flex: 1;
+}
+
+/* The image-URL input that appears when you click the image button. */
+.image-input {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+.image-input:focus {
+  box-shadow: var(--glow-cyan);
+  border-color: transparent;
+}
+
+/* Image preview + the picture shown on a posted tweet. */
+.tweet-image,
+.image-preview {
+  margin-top: 12px;
+  width: 100%;
+  max-height: 380px;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+/* The character counter turns pink/red once you go over the limit. */
+.char-count {
+  font-size: 14px;
+  color: var(--muted);
+}
+.char-count.over {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* ---- Buttons ---- */
+button {
+  font-family: inherit;
+}
+
+.btn {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #07111a;
+  background: var(--accent);
+  transition: transform 0.08s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.btn:hover {
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.45);
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* A quieter, outlined button (used for "Edit profile", "Cancel", etc.). */
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.btn-ghost:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+/* Small round icon button (the image toggle, settings gear). */
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--cyan);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 17px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.icon-btn:hover {
+  border-color: var(--cyan);
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.35);
+}
+
+/* ---- A single tweet ---- */
+.tweet-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+.tweet-name {
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--text);
+}
+.tweet-name:hover {
+  text-decoration: underline;
+}
+.tweet-handle,
+.tweet-time {
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.tweet-head .spacer {
+  flex: 1;
+}
+
+.tweet-content {
+  white-space: pre-wrap; /* keep the user's line breaks */
+  word-wrap: break-word;
+}
+
+.tweet-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 12px;
+}
+
+/* The like button: a heart that glows magenta when liked. */
+.like-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 15px;
+  padding: 4px;
+  transition: color 0.15s ease, transform 0.08s ease;
+}
+.like-btn:hover {
+  color: var(--pink);
+}
+.like-btn:active {
+  transform: scale(1.2);
+}
+.like-btn.liked {
+  color: var(--magenta);
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(232, 121, 249, 0.7);
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+.delete-btn:hover {
+  color: var(--danger);
+}
+
+/* ---- Auth (login / signup) form ---- */
+.auth-tabs {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+.auth-tabs button {
+  background: none;
+  border: none;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  padding-bottom: 6px;
+}
+.auth-tabs button.active {
+  color: var(--text);
+  border-bottom: 2px solid var(--cyan);
+}
+
+/* Text inputs in forms (auth + settings). */
+.field {
+  width: 100%;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.field:focus {
+  box-shadow: var(--glow-cyan);
+  border-color: transparent;
+}
+textarea.field {
+  resize: vertical;
+  min-height: 80px;
+}
+.field-label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+/* ---- Profile page ---- */
+.profile-banner {
+  height: 110px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--accent);
+  opacity: 0.85;
+  margin-top: 16px;
+}
+.profile-card {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.profile-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: -52px; /* pull the avatar up so it overlaps the banner */
+  margin-bottom: 10px;
+}
+.profile-avatar-ring {
+  border: 4px solid var(--bg);
+  border-radius: 50%;
+}
+.profile-name {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 6px 0 0;
+}
+.profile-handle {
+  color: var(--muted);
+}
+.profile-bio {
+  margin: 10px 0;
+}
+.profile-meta {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ---- Section title (e.g. "Settings") ---- */
+.page-title {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 20px;
+  margin: 20px 6px 0;
+}
+
+/* ---- Misc ---- */
+.error {
+  color: var(--danger);
+  font-size: 14px;
+  margin: 8px 0;
+}
+.success {
+  color: var(--cyan);
+  font-size: 14px;
+  margin: 8px 0;
+}
+.muted {
+  color: var(--muted);
+}
+.empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 48px 0;
+}
