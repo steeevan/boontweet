@@ -25,6 +25,12 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT         NOT NULL,
   display_name  VARCHAR(50),                   -- friendly name shown above @username
   bio           VARCHAR(160),                  -- short "about me" on the profile page
+  -- Appearance / customization (all optional):
+  avatar_url    TEXT,                          -- uploaded profile photo (else a generated avatar is used)
+  banner_url    TEXT,                          -- uploaded profile banner
+  theme         VARCHAR(20) DEFAULT 'neon',    -- site color theme the user prefers
+  avatar_anim   VARCHAR(20),                   -- animated avatar "mascot" choice
+  page_effect   VARCHAR(20),                   -- ambient background animation
   created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
@@ -93,6 +99,23 @@ CREATE INDEX IF NOT EXISTS idx_retweets_post_id ON retweets (post_id);
 
 
 -- ---------------------------------------------------------------------------
+-- media — uploaded images, stored directly in the database.
+-- ---------------------------------------------------------------------------
+-- We keep the raw image bytes in a BYTEA column and serve them back at
+-- /api/media/:id. This needs no external storage service, which keeps the app
+-- self-contained and deploy-friendly. (Trade-off: it isn't how you'd store
+-- large amounts of media at real scale — you'd use object storage like S3 —
+-- but it's perfect for a class-sized app.)
+CREATE TABLE IF NOT EXISTS media (
+  id         SERIAL  PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mime_type  TEXT    NOT NULL,           -- e.g. image/png, image/jpeg
+  bytes      BYTEA   NOT NULL,           -- the actual file contents
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+
+-- ---------------------------------------------------------------------------
 -- session — where logins are stored (managed by the "connect-pg-simple" lib).
 -- ---------------------------------------------------------------------------
 -- WHY store sessions in Postgres? A logged-in user's session would normally
@@ -115,4 +138,9 @@ CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
 -- re-runnable. This is a tiny taste of how real "schema migrations" work.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(50);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio          VARCHAR(160);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url   TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url   TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS theme        VARCHAR(20) DEFAULT 'neon';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_anim  VARCHAR(20);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS page_effect  VARCHAR(20);
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_url    TEXT;

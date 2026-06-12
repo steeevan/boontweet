@@ -24,6 +24,7 @@ const pool = require('./db');
 const authRoutes = require('./routes/auth');
 const postRoutes = require('./routes/posts');
 const userRoutes = require('./routes/users');
+const mediaRoutes = require('./routes/media');
 
 const app = express();
 
@@ -62,6 +63,7 @@ app.use(
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/media', mediaRoutes);
 
 // --- 4) Serve the frontend. Anything not matched above is looked up in /public. ---
 app.use(express.static(path.join(__dirname, '..', 'public')));

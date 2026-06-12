@@ -6,8 +6,6 @@
 //   PART 2: API FUNCTIONS  — the "seam": fake data when USE_FAKE_DATA is true,
 //                            real fetch() calls when it's false.
 //   PART 3: COMPONENTS      — the React UI.
-//
-//  Flip USE_FAKE_DATA to switch between a static mockup and the live app.
 // ===========================================================================
 
 const { useState, useEffect } = React;
@@ -19,45 +17,33 @@ const { useState, useEffect } = React;
 const USE_FAKE_DATA = false; // 🔁 true = no backend needed; false = live server
 
 let FAKE_USER = {
-  id: 1,
-  username: "demo",
-  display_name: "Demo Human",
+  id: 1, username: "demo", display_name: "Demo Human",
   bio: "Just here learning to build apps. 🚀",
+  avatar_url: null, banner_url: null, theme: "neon", avatar_anim: "bird", page_effect: "aurora",
   created_at: new Date().toISOString(),
 };
 
-// Each tweet now also carries comment/retweet counts and a retweeted_by label.
 let FAKE_TWEETS = [
-  {
-    id: 3, username: "ada", display_name: "Ada L.",
+  { id: 3, username: "ada", display_name: "Ada L.", avatar_url: null, avatar_anim: "star",
     content: "Just wrote my first SQL query and it returned the right rows. Powerful feeling.",
     image_url: null, created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-    like_count: 4, comment_count: 1, retweet_count: 0,
-    liked_by_me: false, retweeted_by_me: false, retweeted_by: null,
-  },
-  {
-    id: 2, username: "grace", display_name: "Grace H.",
+    like_count: 4, comment_count: 1, retweet_count: 0, liked_by_me: false, retweeted_by_me: false, retweeted_by: null },
+  { id: 2, username: "grace", display_name: "Grace H.", avatar_url: null, avatar_anim: null,
     content: "A function that does one thing is easier to debug than one that does five.",
     image_url: "https://picsum.photos/seed/boontweet/600/320",
     created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    like_count: 12, comment_count: 2, retweet_count: 3,
-    liked_by_me: true, retweeted_by_me: false, retweeted_by: null,
-  },
-  {
-    id: 1, username: "demo", display_name: "Demo Human",
+    like_count: 12, comment_count: 2, retweet_count: 3, liked_by_me: true, retweeted_by_me: false, retweeted_by: null },
+  { id: 1, username: "demo", display_name: "Demo Human", avatar_url: null, avatar_anim: "bird",
     content: "Hello BoonTweet! 🐦 This tweet is fake data — there's no server yet.",
     image_url: null, created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    like_count: 1, comment_count: 0, retweet_count: 0,
-    liked_by_me: false, retweeted_by_me: false, retweeted_by: null,
-  },
+    like_count: 1, comment_count: 0, retweet_count: 0, liked_by_me: false, retweeted_by_me: false, retweeted_by: null },
 ];
 
-// Fake comments, keyed by post id.
 let FAKE_COMMENTS = {
-  3: [{ id: 1, username: "grace", display_name: "Grace H.", content: "Welcome to the club! 🎉", created_at: new Date().toISOString() }],
+  3: [{ id: 1, username: "grace", display_name: "Grace H.", avatar_url: null, avatar_anim: null, content: "Welcome to the club! 🎉", created_at: new Date().toISOString() }],
   2: [
-    { id: 2, username: "ada", display_name: "Ada L.", content: "100%.", created_at: new Date().toISOString() },
-    { id: 3, username: "demo", display_name: "Demo Human", content: "Saving this.", created_at: new Date().toISOString() },
+    { id: 2, username: "ada", display_name: "Ada L.", avatar_url: null, avatar_anim: "star", content: "100%.", created_at: new Date().toISOString() },
+    { id: 3, username: "demo", display_name: "Demo Human", avatar_url: null, avatar_anim: "bird", content: "Saving this.", created_at: new Date().toISOString() },
   ],
 };
 
@@ -73,11 +59,22 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
+// Upload a file. NOTE: we do NOT set Content-Type here — the browser sets the
+// multipart boundary itself. Returns the URL to use for the image.
+async function apiUploadImage(file) {
+  if (USE_FAKE_DATA) return URL.createObjectURL(file); // local-only preview
+  const form = new FormData();
+  form.append("image", file);
+  const res = await fetch("/api/media", { method: "POST", body: form });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data && data.error) || "Upload failed");
+  return data.url;
+}
+
 // ---- Auth ----
 async function apiGetCurrentUser() {
   if (USE_FAKE_DATA) return FAKE_USER;
-  const data = await fetchJson("/api/auth/me");
-  return data.user;
+  return (await fetchJson("/api/auth/me")).user;
 }
 async function apiSignup(username, password) {
   if (USE_FAKE_DATA) return FAKE_USER;
@@ -91,9 +88,10 @@ async function apiLogout() {
   if (USE_FAKE_DATA) return;
   await fetchJson("/api/auth/logout", { method: "POST" });
 }
-async function apiUpdateProfile(displayName, bio) {
-  if (USE_FAKE_DATA) { FAKE_USER = { ...FAKE_USER, display_name: displayName, bio }; return FAKE_USER; }
-  return (await fetchJson("/api/users/me", { method: "PUT", body: JSON.stringify({ display_name: displayName, bio }) })).user;
+// Save the full profile + appearance (Settings sends every field).
+async function apiUpdateProfile(fields) {
+  if (USE_FAKE_DATA) { FAKE_USER = { ...FAKE_USER, ...fields }; return FAKE_USER; }
+  return (await fetchJson("/api/users/me", { method: "PUT", body: JSON.stringify(fields) })).user;
 }
 
 // ---- Posts / feed ----
@@ -105,21 +103,19 @@ async function apiGetProfile(username) {
   if (USE_FAKE_DATA) {
     const posts = FAKE_TWEETS.filter((t) => t.username === username);
     const user = username === FAKE_USER.username ? FAKE_USER
-      : { username, display_name: posts[0] && posts[0].display_name, bio: null, created_at: FAKE_USER.created_at };
+      : { username, display_name: posts[0] && posts[0].display_name, avatar_url: null, banner_url: null, bio: null, created_at: FAKE_USER.created_at };
     return { user, posts };
   }
   return await fetchJson("/api/users/" + encodeURIComponent(username));
 }
 async function apiCreatePost(content, imageUrl) {
   if (USE_FAKE_DATA) {
-    const newPost = {
-      id: Date.now(), username: FAKE_USER.username, display_name: FAKE_USER.display_name,
+    const p = { id: Date.now(), username: FAKE_USER.username, display_name: FAKE_USER.display_name,
+      avatar_url: FAKE_USER.avatar_url, avatar_anim: FAKE_USER.avatar_anim,
       content, image_url: imageUrl || null, created_at: new Date().toISOString(),
-      like_count: 0, comment_count: 0, retweet_count: 0,
-      liked_by_me: false, retweeted_by_me: false, retweeted_by: null,
-    };
-    FAKE_TWEETS = [newPost, ...FAKE_TWEETS];
-    return newPost;
+      like_count: 0, comment_count: 0, retweet_count: 0, liked_by_me: false, retweeted_by_me: false, retweeted_by: null };
+    FAKE_TWEETS = [p, ...FAKE_TWEETS];
+    return p;
   }
   return await fetchJson("/api/posts", { method: "POST", body: JSON.stringify({ content, image_url: imageUrl }) });
 }
@@ -128,31 +124,13 @@ async function apiDeletePost(id) {
   await fetchJson("/api/posts/" + id, { method: "DELETE" });
 }
 
-// ---- Likes ----
-async function apiLike(id) {
-  if (USE_FAKE_DATA) { toggleFake(id, "liked_by_me", "like_count", true); return; }
-  await fetchJson("/api/posts/" + id + "/like", { method: "POST" });
-}
-async function apiUnlike(id) {
-  if (USE_FAKE_DATA) { toggleFake(id, "liked_by_me", "like_count", false); return; }
-  await fetchJson("/api/posts/" + id + "/like", { method: "DELETE" });
-}
-
-// ---- Retweets ----
-async function apiRetweet(id) {
-  if (USE_FAKE_DATA) { toggleFake(id, "retweeted_by_me", "retweet_count", true); return; }
-  await fetchJson("/api/posts/" + id + "/retweet", { method: "POST" });
-}
-async function apiUnretweet(id) {
-  if (USE_FAKE_DATA) { toggleFake(id, "retweeted_by_me", "retweet_count", false); return; }
-  await fetchJson("/api/posts/" + id + "/retweet", { method: "DELETE" });
-}
-
-// Small helper for fake like/retweet toggles.
-function toggleFake(id, flagKey, countKey, on) {
-  FAKE_TWEETS = FAKE_TWEETS.map((t) =>
-    t.id === id ? { ...t, [flagKey]: on, [countKey]: t[countKey] + (on ? 1 : -1) } : t
-  );
+// ---- Likes / retweets ----
+async function apiLike(id) { if (USE_FAKE_DATA) return toggleFake(id, "liked_by_me", "like_count", true); await fetchJson("/api/posts/" + id + "/like", { method: "POST" }); }
+async function apiUnlike(id) { if (USE_FAKE_DATA) return toggleFake(id, "liked_by_me", "like_count", false); await fetchJson("/api/posts/" + id + "/like", { method: "DELETE" }); }
+async function apiRetweet(id) { if (USE_FAKE_DATA) return toggleFake(id, "retweeted_by_me", "retweet_count", true); await fetchJson("/api/posts/" + id + "/retweet", { method: "POST" }); }
+async function apiUnretweet(id) { if (USE_FAKE_DATA) return toggleFake(id, "retweeted_by_me", "retweet_count", false); await fetchJson("/api/posts/" + id + "/retweet", { method: "DELETE" }); }
+function toggleFake(id, flag, count, on) {
+  FAKE_TWEETS = FAKE_TWEETS.map((t) => (t.id === id ? { ...t, [flag]: on, [count]: t[count] + (on ? 1 : -1) } : t));
 }
 
 // ---- Comments ----
@@ -162,9 +140,8 @@ async function apiGetComments(postId) {
 }
 async function apiAddComment(postId, content) {
   if (USE_FAKE_DATA) {
-    const c = { id: Date.now(), username: FAKE_USER.username, display_name: FAKE_USER.display_name, content, created_at: new Date().toISOString() };
+    const c = { id: Date.now(), username: FAKE_USER.username, display_name: FAKE_USER.display_name, avatar_url: FAKE_USER.avatar_url, avatar_anim: FAKE_USER.avatar_anim, content, created_at: new Date().toISOString() };
     FAKE_COMMENTS[postId] = [...(FAKE_COMMENTS[postId] || []), c];
-    toggleFake(postId, "comment_count", "comment_count", true); // bump count (flag unused)
     FAKE_TWEETS = FAKE_TWEETS.map((t) => (t.id === postId ? { ...t, comment_count: (FAKE_COMMENTS[postId] || []).length } : t));
     return c;
   }
@@ -183,6 +160,21 @@ async function apiDeleteComment(postId, commentId) {
 // PART 3 — COMPONENTS
 // ===========================================================================
 
+// The animated avatar "mascots" you can pick in Settings (key -> emoji).
+const MASCOTS = { bird: "🐦", fox: "🦊", alien: "👾", star: "🌟", ghost: "👻" };
+const THEMES = [
+  { key: "neon", label: "Neon" },
+  { key: "sunset", label: "Sunset" },
+  { key: "matrix", label: "Matrix" },
+  { key: "bubblegum", label: "Bubblegum" },
+];
+const EFFECTS = [
+  { key: "none", label: "None" },
+  { key: "aurora", label: "Aurora" },
+  { key: "particles", label: "Particles" },
+  { key: "stars", label: "Stars" },
+];
+
 function timeAgo(iso) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return "now";
@@ -192,23 +184,40 @@ function timeAgo(iso) {
   if (h < 24) return h + "h";
   return Math.floor(h / 24) + "d";
 }
-
 function shownName(user) {
   return (user && user.display_name) || (user && user.username) || "?";
 }
 
-// ---- Avatar (gradient circle from username) ----
+// ---- Avatar ----
+// Priority: uploaded photo (avatar_url) > animated mascot (avatar_anim) >
+// a gradient circle with the first initial.
 function avatarGradient(name) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   const h1 = Math.abs(hash) % 360;
   return `linear-gradient(135deg, hsl(${h1} 85% 60%), hsl(${(h1 + 60) % 360} 85% 50%))`;
 }
-function Avatar({ name, size = 44, onClick }) {
-  const label = name || "?";
+function Avatar({ user, name, size = 44, onClick }) {
+  const u = user || { username: name };
+  const label = u.username || name || "?";
+  const cls = "avatar" + (onClick ? " clickable" : "");
+  const box = { width: size, height: size };
+
+  if (u.avatar_url) {
+    return <img className={cls} src={u.avatar_url} alt="" onClick={onClick}
+      style={{ ...box, objectFit: "cover" }} />;
+  }
+  if (u.avatar_anim && MASCOTS[u.avatar_anim]) {
+    return (
+      <div className={cls + " avatar-mascot"} onClick={onClick}
+        style={{ ...box, fontSize: size * 0.55, background: avatarGradient(label) }}>
+        <span className="mascot-emoji">{MASCOTS[u.avatar_anim]}</span>
+      </div>
+    );
+  }
   return (
-    <div className={"avatar" + (onClick ? " clickable" : "")} onClick={onClick}
-      style={{ width: size, height: size, fontSize: size * 0.42, background: avatarGradient(label) }}>
+    <div className={cls} onClick={onClick}
+      style={{ ...box, fontSize: size * 0.42, background: avatarGradient(label) }}>
       {label.charAt(0).toUpperCase()}
     </div>
   );
@@ -230,7 +239,6 @@ function AuthForm({ onAuthed }) {
       onAuthed(user);
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
-
   return (
     <div className="card">
       <div className="auth-tabs">
@@ -238,11 +246,9 @@ function AuthForm({ onAuthed }) {
         <button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Sign up</button>
       </div>
       <form onSubmit={handleSubmit}>
-        <input className="field" placeholder="username" value={username} autoComplete="username"
-          onChange={(e) => setUsername(e.target.value)} />
+        <input className="field" placeholder="username" value={username} autoComplete="username" onChange={(e) => setUsername(e.target.value)} />
         <input className="field" type="password" placeholder="password" value={password}
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          onChange={(e) => setPassword(e.target.value)} />
+          autoComplete={mode === "login" ? "current-password" : "new-password"} onChange={(e) => setPassword(e.target.value)} />
         {error && <div className="error">{error}</div>}
         <button className="btn" type="submit" disabled={busy}>{mode === "login" ? "Log in" : "Create account"}</button>
       </form>
@@ -255,12 +261,21 @@ function Composer({ currentUser, onPosted }) {
   const [content, setContent] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [showImage, setShowImage] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const MAX = 280;
   const remaining = MAX - content.length;
   const isEmpty = content.trim().length === 0;
   const tooLong = content.length > MAX;
 
+  async function onPickFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setError(""); setUploading(true);
+    try { setImageUrl(await apiUploadImage(file)); }
+    catch (err) { setError(err.message); }
+    finally { setUploading(false); }
+  }
   async function handlePost() {
     setError("");
     try {
@@ -273,25 +288,27 @@ function Composer({ currentUser, onPosted }) {
   return (
     <div className="card composer">
       <div className="row">
-        <Avatar name={currentUser.username} />
+        <Avatar user={currentUser} />
         <div className="row-main">
-          <textarea placeholder="What's happening?" value={content} maxLength={MAX + 20}
-            onChange={(e) => setContent(e.target.value)} />
+          <textarea placeholder="What's happening?" value={content} maxLength={MAX + 20} onChange={(e) => setContent(e.target.value)} />
           {showImage && (
-            <input className="image-input" placeholder="Paste an image URL (https://...)"
-              value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
+            <div className="image-tools">
+              <label className="btn-ghost btn-sm upload-label">
+                {uploading ? "Uploading…" : "📎 Upload"}
+                <input type="file" accept="image/*" onChange={onPickFile} hidden />
+              </label>
+              <input className="image-input" placeholder="…or paste an image URL" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
+            </div>
           )}
           {showImage && imageUrl.trim() && (
-            <img className="image-preview" src={imageUrl} alt="preview"
-              onError={(e) => (e.target.style.display = "none")}
-              onLoad={(e) => (e.target.style.display = "block")} />
+            <img className="image-preview" src={imageUrl} alt="preview" onError={(e) => (e.target.style.display = "none")} onLoad={(e) => (e.target.style.display = "block")} />
           )}
           {error && <div className="error">{error}</div>}
           <div className="composer-footer">
-            <button className="icon-btn" title="Add an image by URL" onClick={() => setShowImage((s) => !s)}>🖼️</button>
+            <button className="icon-btn" title="Add an image" onClick={() => setShowImage((s) => !s)}>🖼️</button>
             <span className="spacer"></span>
             <span className={"char-count" + (tooLong ? " over" : "")}>{remaining}</span>
-            <button className="btn" onClick={handlePost} disabled={isEmpty || tooLong}>Post</button>
+            <button className="btn" onClick={handlePost} disabled={isEmpty || tooLong || uploading}>Post</button>
           </div>
         </div>
       </div>
@@ -299,39 +316,29 @@ function Composer({ currentUser, onPosted }) {
   );
 }
 
-// ---- CommentThread: the replies under a tweet ----
+// ---- CommentThread ----
 function CommentThread({ postId, currentUser, onCountChanged }) {
   const [comments, setComments] = useState(null);
   const [text, setText] = useState("");
-
-  async function load() {
-    try { setComments(await apiGetComments(postId)); } catch (err) { console.error(err); }
-  }
+  async function load() { try { setComments(await apiGetComments(postId)); } catch (e) { console.error(e); } }
   useEffect(() => { load(); }, [postId]);
 
   async function add(e) {
     e.preventDefault();
     if (!text.trim()) return;
-    try {
-      await apiAddComment(postId, text.trim());
-      setText("");
-      await load();
-      onCountChanged(); // refresh the feed so the 💬 count updates
-    } catch (err) { alert(err.message); }
+    try { await apiAddComment(postId, text.trim()); setText(""); await load(); onCountChanged(); }
+    catch (err) { alert(err.message); }
   }
-
   async function remove(id) {
     try { await apiDeleteComment(postId, id); await load(); onCountChanged(); }
     catch (err) { alert(err.message); }
   }
-
   return (
     <div className="comments">
       {currentUser && (
         <form className="comment-form" onSubmit={add}>
-          <Avatar name={currentUser.username} size={30} />
-          <input className="comment-input" placeholder="Write a reply…" value={text}
-            maxLength={280} onChange={(e) => setText(e.target.value)} />
+          <Avatar user={currentUser} size={30} />
+          <input className="comment-input" placeholder="Write a reply…" value={text} maxLength={280} onChange={(e) => setText(e.target.value)} />
           <button className="btn btn-sm" type="submit" disabled={!text.trim()}>Reply</button>
         </form>
       )}
@@ -342,7 +349,7 @@ function CommentThread({ postId, currentUser, onCountChanged }) {
       ) : (
         comments.map((c) => (
           <div className="comment" key={c.id}>
-            <Avatar name={c.username} size={30} />
+            <Avatar user={c} size={30} />
             <div className="comment-body">
               <span className="comment-name">{c.display_name || c.username}</span>
               <span className="comment-handle">@{c.username} · {timeAgo(c.created_at)}</span>
@@ -364,16 +371,12 @@ function Tweet({ tweet, currentUser, onChanged, onOpenProfile }) {
   const isMine = currentUser && currentUser.username === tweet.username;
 
   async function toggleLike() {
-    try {
-      tweet.liked_by_me ? await apiUnlike(tweet.id) : await apiLike(tweet.id);
-      onChanged();
-    } catch (err) { alert(err.message); }
+    try { tweet.liked_by_me ? await apiUnlike(tweet.id) : await apiLike(tweet.id); onChanged(); }
+    catch (err) { alert(err.message); }
   }
   async function toggleRetweet() {
-    try {
-      tweet.retweeted_by_me ? await apiUnretweet(tweet.id) : await apiRetweet(tweet.id);
-      onChanged();
-    } catch (err) { alert(err.message); }
+    try { tweet.retweeted_by_me ? await apiUnretweet(tweet.id) : await apiRetweet(tweet.id); onChanged(); }
+    catch (err) { alert(err.message); }
   }
   async function handleDelete() {
     if (!confirm("Delete this tweet?")) return;
@@ -382,14 +385,11 @@ function Tweet({ tweet, currentUser, onChanged, onOpenProfile }) {
 
   return (
     <div className="card">
-      {/* "retweeted by" label, shown when this feed item is a retweet */}
       {tweet.retweeted_by && (
-        <div className="retweet-label" onClick={() => onOpenProfile(tweet.retweeted_by)}>
-          🔁 @{tweet.retweeted_by} retweeted
-        </div>
+        <div className="retweet-label" onClick={() => onOpenProfile(tweet.retweeted_by)}>🔁 @{tweet.retweeted_by} retweeted</div>
       )}
       <div className="row">
-        <Avatar name={tweet.username} onClick={() => onOpenProfile(tweet.username)} />
+        <Avatar user={tweet} onClick={() => onOpenProfile(tweet.username)} />
         <div className="row-main">
           <div className="tweet-head">
             <span className="tweet-name" onClick={() => onOpenProfile(tweet.username)}>{shownName(tweet)}</span>
@@ -398,28 +398,14 @@ function Tweet({ tweet, currentUser, onChanged, onOpenProfile }) {
             <span className="spacer"></span>
             {isMine && <button className="delete-btn" title="Delete" onClick={handleDelete}>×</button>}
           </div>
-
           <div className="tweet-content">{tweet.content}</div>
-          {tweet.image_url && (
-            <img className="tweet-image" src={tweet.image_url} alt=""
-              onError={(e) => (e.target.style.display = "none")} />
-          )}
-
+          {tweet.image_url && <img className="tweet-image" src={tweet.image_url} alt="" onError={(e) => (e.target.style.display = "none")} />}
           <div className="tweet-actions">
-            <button className="action-btn" title="Reply" onClick={() => setShowComments((s) => !s)}>
-              💬 {tweet.comment_count}
-            </button>
-            <button className={"action-btn retweet" + (tweet.retweeted_by_me ? " on" : "")} title="Retweet" onClick={toggleRetweet}>
-              🔁 {tweet.retweet_count}
-            </button>
-            <button className={"action-btn like" + (tweet.liked_by_me ? " on" : "")} title="Like" onClick={toggleLike}>
-              {tweet.liked_by_me ? "♥" : "♡"} {tweet.like_count}
-            </button>
+            <button className="action-btn" title="Reply" onClick={() => setShowComments((s) => !s)}>💬 {tweet.comment_count}</button>
+            <button className={"action-btn retweet" + (tweet.retweeted_by_me ? " on" : "")} title="Retweet" onClick={toggleRetweet}>🔁 {tweet.retweet_count}</button>
+            <button className={"action-btn like" + (tweet.liked_by_me ? " on" : "")} title="Like" onClick={toggleLike}>{tweet.liked_by_me ? "♥" : "♡"} {tweet.like_count}</button>
           </div>
-
-          {showComments && (
-            <CommentThread postId={tweet.id} currentUser={currentUser} onCountChanged={onChanged} />
-          )}
+          {showComments && <CommentThread postId={tweet.id} currentUser={currentUser} onCountChanged={onChanged} />}
         </div>
       </div>
     </div>
@@ -432,15 +418,13 @@ function Feed({ tweets, currentUser, onChanged, onOpenProfile }) {
   return (
     <div>
       {tweets.map((t) => (
-        // Composite key: the same post can appear as an original AND a retweet.
-        <Tweet key={(t.retweeted_by || "orig") + "-" + t.id} tweet={t}
-          currentUser={currentUser} onChanged={onChanged} onOpenProfile={onOpenProfile} />
+        <Tweet key={(t.retweeted_by || "orig") + "-" + t.id} tweet={t} currentUser={currentUser} onChanged={onChanged} onOpenProfile={onOpenProfile} />
       ))}
     </div>
   );
 }
 
-// ---- Tabs (primary navigation) ----
+// ---- Tabs ----
 function Tabs({ active, onSelect }) {
   return (
     <div className="tabs">
@@ -470,13 +454,14 @@ function Profile({ username, currentUser, onChanged, onOpenProfile, onEdit }) {
   if (error) return <div className="error">{error}</div>;
   if (!data) return <div className="empty">Loading…</div>;
   const isOwn = currentUser && currentUser.username === data.user.username;
+  const bannerStyle = data.user.banner_url ? { backgroundImage: `url(${data.user.banner_url})` } : {};
 
   return (
     <div>
-      <div className="profile-banner"></div>
+      <div className={"profile-banner" + (data.user.banner_url ? " has-image" : "")} style={bannerStyle}></div>
       <div className="card profile-card">
         <div className="profile-top">
-          <div className="profile-avatar-ring"><Avatar name={data.user.username} size={92} /></div>
+          <div className="profile-avatar-ring"><Avatar user={data.user} size={92} /></div>
           {isOwn && <button className="btn-ghost" onClick={onEdit}>Edit profile</button>}
         </div>
         <h2 className="profile-name">{shownName(data.user)}</h2>
@@ -491,33 +476,106 @@ function Profile({ username, currentUser, onChanged, onOpenProfile, onEdit }) {
   );
 }
 
-// ---- Settings ----
+// ---- A row of selectable option chips (used for theme / mascot / effect) ----
+function OptionRow({ options, value, onChange }) {
+  return (
+    <div className="opt-row">
+      {options.map((o) => (
+        <button key={o.key} type="button" className={"opt" + (value === o.key ? " active" : "")} onClick={() => onChange(o.key)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---- Settings (profile + appearance) ----
 function Settings({ currentUser, onSaved }) {
   const [displayName, setDisplayName] = useState(currentUser.display_name || "");
   const [bio, setBio] = useState(currentUser.bio || "");
+  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar_url || "");
+  const [bannerUrl, setBannerUrl] = useState(currentUser.banner_url || "");
+  const [theme, setTheme] = useState(currentUser.theme || "neon");
+  const [avatarAnim, setAvatarAnim] = useState(currentUser.avatar_anim || "");
+  const [pageEffect, setPageEffect] = useState(currentUser.page_effect || "none");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState("");
+
+  async function upload(file, setter, which) {
+    if (!file) return;
+    setError(""); setBusy(which);
+    try { setter(await apiUploadImage(file)); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(""); }
+  }
 
   async function handleSave(e) {
     e.preventDefault();
     setError(""); setSaved(false);
-    try { onSaved(await apiUpdateProfile(displayName.trim(), bio.trim())); setSaved(true); }
-    catch (err) { setError(err.message); }
+    try {
+      const updated = await apiUpdateProfile({
+        display_name: displayName.trim(), bio: bio.trim(),
+        avatar_url: avatarUrl || null, banner_url: bannerUrl || null,
+        theme, avatar_anim: avatarAnim || null, page_effect: pageEffect === "none" ? null : pageEffect,
+      });
+      onSaved(updated);
+      setSaved(true);
+    } catch (err) { setError(err.message); }
   }
+
+  // Build the mascot option list (with a "None" choice).
+  const mascotOptions = [{ key: "", label: "None" }].concat(
+    Object.keys(MASCOTS).map((k) => ({ key: k, label: MASCOTS[k] }))
+  );
+  // A preview user object so the Avatar reflects the current choices live.
+  const previewUser = { username: currentUser.username, avatar_url: avatarUrl, avatar_anim: avatarAnim };
 
   return (
     <div>
       <h2 className="page-title">Settings</h2>
       <form className="card" onSubmit={handleSave}>
         <label className="field-label">Display name</label>
-        <input className="field" placeholder="e.g. Ada Lovelace" value={displayName} maxLength={50}
-          onChange={(e) => setDisplayName(e.target.value)} />
+        <input className="field" placeholder="e.g. Ada Lovelace" value={displayName} maxLength={50} onChange={(e) => setDisplayName(e.target.value)} />
+
         <label className="field-label">Bio</label>
-        <textarea className="field" placeholder="A short something about you…" value={bio} maxLength={160}
-          onChange={(e) => setBio(e.target.value)} />
+        <textarea className="field" placeholder="A short something about you…" value={bio} maxLength={160} onChange={(e) => setBio(e.target.value)} />
+
+        <h3 className="settings-section">Appearance</h3>
+
+        <label className="field-label">Profile photo</label>
+        <div className="avatar-edit">
+          <Avatar user={previewUser} size={64} />
+          <label className="btn-ghost btn-sm upload-label">
+            {busy === "avatar" ? "Uploading…" : "Upload photo"}
+            <input type="file" accept="image/*" hidden onChange={(e) => upload(e.target.files[0], setAvatarUrl, "avatar")} />
+          </label>
+          {avatarUrl && <button type="button" className="btn-ghost btn-sm" onClick={() => setAvatarUrl("")}>Remove</button>}
+        </div>
+        {!avatarUrl && <div className="hint">No photo? Pick an animated mascot below, or we'll use a colorful initial.</div>}
+
+        <label className="field-label">Banner</label>
+        <div className={"banner-preview" + (bannerUrl ? " has-image" : "")} style={bannerUrl ? { backgroundImage: `url(${bannerUrl})` } : {}}></div>
+        <div className="avatar-edit">
+          <label className="btn-ghost btn-sm upload-label">
+            {busy === "banner" ? "Uploading…" : "Upload banner"}
+            <input type="file" accept="image/*" hidden onChange={(e) => upload(e.target.files[0], setBannerUrl, "banner")} />
+          </label>
+          {bannerUrl && <button type="button" className="btn-ghost btn-sm" onClick={() => setBannerUrl("")}>Remove</button>}
+        </div>
+
+        <label className="field-label">Theme (applies after you save)</label>
+        <OptionRow options={THEMES} value={theme} onChange={setTheme} />
+
+        <label className="field-label">Animated mascot {avatarUrl ? "(hidden while a photo is set)" : ""}</label>
+        <OptionRow options={mascotOptions} value={avatarAnim} onChange={setAvatarAnim} />
+
+        <label className="field-label">Background effect</label>
+        <OptionRow options={EFFECTS} value={pageEffect} onChange={setPageEffect} />
+
         {error && <div className="error">{error}</div>}
         {saved && <div className="success">Saved! ✨</div>}
-        <button className="btn" type="submit">Save changes</button>
+        <button className="btn" type="submit" disabled={!!busy}>Save changes</button>
       </form>
     </div>
   );
@@ -528,20 +586,22 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [tweets, setTweets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState({ name: "feed" }); // feed | sports | profile | settings
+  const [view, setView] = useState({ name: "feed" });
 
-  async function reloadFeed() {
-    setTweets(await apiGetFeed());
-  }
+  async function reloadFeed() { setTweets(await apiGetFeed()); }
 
   useEffect(() => {
     (async () => {
-      try {
-        setCurrentUser(await apiGetCurrentUser());
-        await reloadFeed();
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+      try { setCurrentUser(await apiGetCurrentUser()); await reloadFeed(); }
+      catch (err) { console.error(err); } finally { setLoading(false); }
     })();
   }, []);
+
+  // Apply the logged-in user's theme + background effect to the whole page.
+  useEffect(() => {
+    document.body.dataset.theme = (currentUser && currentUser.theme) || "neon";
+    document.body.dataset.effect = (currentUser && currentUser.page_effect) || "none";
+  }, [currentUser]);
 
   function openProfile(username) { setView({ name: "profile", username }); }
   function selectTab(name) { setView({ name }); if (name === "feed") reloadFeed(); }
@@ -557,7 +617,7 @@ function App() {
           {currentUser ? (
             <>
               <button className="icon-btn" title="Settings" onClick={() => setView({ name: "settings" })}>⚙</button>
-              <Avatar name={currentUser.username} size={36} onClick={() => openProfile(currentUser.username)} />
+              <Avatar user={currentUser} size={36} onClick={() => openProfile(currentUser.username)} />
               <button className="btn-ghost" onClick={handleLogout}>Log out</button>
             </>
           ) : (
@@ -575,10 +635,8 @@ function App() {
       ) : view.name === "settings" ? (
         <Settings currentUser={currentUser} onSaved={handleProfileSaved} />
       ) : view.name === "profile" ? (
-        <Profile username={view.username} currentUser={currentUser}
-          onChanged={reloadFeed} onOpenProfile={openProfile} onEdit={() => setView({ name: "settings" })} />
+        <Profile username={view.username} currentUser={currentUser} onChanged={reloadFeed} onOpenProfile={openProfile} onEdit={() => setView({ name: "settings" })} />
       ) : (
-        // feed view
         <>
           {currentUser
             ? <Composer currentUser={currentUser} onPosted={reloadFeed} />

@@ -19,6 +19,11 @@ const router = express.Router();
 const USERNAME_RE = /^[A-Za-z0-9_]{1,30}$/;
 const MIN_PASSWORD_LENGTH = 6;
 
+// The user columns we send to the frontend (everything EXCEPT password_hash).
+// Defined once and reused so signup / login / me / profile all agree.
+const USER_COLS =
+  'id, username, display_name, bio, avatar_url, banner_url, theme, avatar_anim, page_effect, created_at';
+
 // ---------------------------------------------------------------------------
 // requireLogin — middleware that blocks routes for logged-out users.
 // ---------------------------------------------------------------------------
@@ -63,7 +68,7 @@ router.post('/signup', async (req, res, next) => {
     const result = await pool.query(
       `INSERT INTO users (username, password_hash)
        VALUES ($1, $2)
-       RETURNING id, username, display_name, bio, created_at`,
+       RETURNING ${USER_COLS}`,
       [username, passwordHash]
     );
     const user = result.rows[0];
@@ -89,7 +94,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     const result = await pool.query(
-      'SELECT id, username, password_hash, display_name, bio, created_at FROM users WHERE username = $1',
+      `SELECT ${USER_COLS}, password_hash FROM users WHERE username = $1`,
       [username]
     );
     const user = result.rows[0];
@@ -105,15 +110,9 @@ router.post('/login', async (req, res, next) => {
     req.session.userId = user.id;
     req.session.username = user.username;
 
-    res.json({
-      user: {
-        id: user.id,
-        username: user.username,
-        display_name: user.display_name,
-        bio: user.bio,
-        created_at: user.created_at,
-      },
-    });
+    // Return everything except the password hash.
+    const { password_hash, ...publicUser } = user;
+    res.json({ user: publicUser });
   } catch (err) {
     next(err);
   }
@@ -141,7 +140,7 @@ router.get('/me', async (req, res, next) => {
       return res.json({ user: null });
     }
     const result = await pool.query(
-      'SELECT id, username, display_name, bio, created_at FROM users WHERE id = $1',
+      `SELECT ${USER_COLS} FROM users WHERE id = $1`,
       [req.session.userId]
     );
     res.json({ user: result.rows[0] || null });
@@ -153,3 +152,4 @@ router.get('/me', async (req, res, next) => {
 // Export the router AND the middleware (posts.js needs requireLogin).
 module.exports = router;
 module.exports.requireLogin = requireLogin;
+module.exports.USER_COLS = USER_COLS;

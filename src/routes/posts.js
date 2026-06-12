@@ -30,6 +30,8 @@ const POST_FIELDS = `
   p.created_at,
   u.username,
   u.display_name,
+  u.avatar_url,
+  u.avatar_anim,
   (SELECT COUNT(*) FROM likes    l  WHERE l.post_id  = p.id)::int AS like_count,
   (SELECT COUNT(*) FROM comments c  WHERE c.post_id  = p.id)::int AS comment_count,
   (SELECT COUNT(*) FROM retweets rt WHERE rt.post_id = p.id)::int AS retweet_count,
@@ -218,7 +220,7 @@ router.get('/:id/comments', async (req, res, next) => {
     if (!Number.isInteger(postId)) return res.status(400).json({ error: 'Invalid post id.' });
 
     const result = await pool.query(
-      `SELECT c.id, c.content, c.created_at, u.username, u.display_name
+      `SELECT c.id, c.content, c.created_at, u.username, u.display_name, u.avatar_url, u.avatar_anim
          FROM comments c
          JOIN users u ON u.id = c.user_id
         WHERE c.post_id = $1

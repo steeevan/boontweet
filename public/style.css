@@ -625,3 +625,186 @@ textarea.field {
   font-family: "Space Grotesk", sans-serif;
   margin: 12px 0 6px;
 }
+
+/* ==========================================================================
+   Phase 2 additions: themes, page effects, avatars/mascots, uploads, banners
+   ========================================================================== */
+
+/* ---- Animated avatar mascots ---- */
+.avatar-mascot .mascot-emoji {
+  display: inline-block;
+  animation: mascotBob 2.4s ease-in-out infinite;
+}
+@keyframes mascotBob {
+  0%, 100% { transform: translateY(8%) rotate(-5deg); }
+  50%      { transform: translateY(-10%) rotate(5deg); }
+}
+
+/* ---- Themes — set on <body data-theme="..">, applied after the user saves. ---- */
+/* "neon" is the default in :root, so it needs no override. */
+body[data-theme="sunset"] {
+  --cyan: #fb923c;
+  --magenta: #f43f5e;
+  --pink: #fda4af;
+  --accent: linear-gradient(135deg, #fb923c, #f43f5e);
+  --glow-cyan: 0 0 0 1px rgba(251, 146, 60, 0.5), 0 0 18px rgba(251, 146, 60, 0.35);
+  background-image:
+    radial-gradient(40rem 40rem at 15% -10%, rgba(251, 146, 60, 0.20), transparent 60%),
+    radial-gradient(38rem 38rem at 100% 0%, rgba(244, 63, 94, 0.18), transparent 55%);
+}
+body[data-theme="matrix"] {
+  --bg: #04140a;
+  --cyan: #22c55e;
+  --magenta: #4ade80;
+  --pink: #86efac;
+  --accent: linear-gradient(135deg, #22c55e, #4ade80);
+  --glow-cyan: 0 0 0 1px rgba(34, 197, 94, 0.5), 0 0 18px rgba(34, 197, 94, 0.4);
+  background-color: #04140a;
+  background-image:
+    radial-gradient(40rem 40rem at 15% -10%, rgba(34, 197, 94, 0.18), transparent 60%),
+    radial-gradient(38rem 38rem at 100% 0%, rgba(74, 222, 128, 0.15), transparent 55%);
+}
+body[data-theme="bubblegum"] {
+  --bg: #140a1f;
+  --cyan: #f472b6;
+  --magenta: #a78bfa;
+  --pink: #f9a8d4;
+  --accent: linear-gradient(135deg, #f472b6, #a78bfa);
+  --glow-cyan: 0 0 0 1px rgba(244, 114, 182, 0.5), 0 0 18px rgba(167, 139, 250, 0.4);
+  background-color: #140a1f;
+  background-image:
+    radial-gradient(40rem 40rem at 15% -10%, rgba(244, 114, 182, 0.20), transparent 60%),
+    radial-gradient(38rem 38rem at 100% 0%, rgba(167, 139, 250, 0.20), transparent 55%);
+}
+
+/* ---- Ambient background effects — set on <body data-effect=".."> ---- */
+/* Each draws into a fixed, click-through layer behind the app content. */
+body[data-effect="aurora"]::before {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(28rem 28rem at 25% 30%, rgba(34, 211, 238, 0.16), transparent 60%),
+    radial-gradient(26rem 26rem at 75% 70%, rgba(232, 121, 249, 0.16), transparent 60%);
+  filter: blur(24px);
+  animation: auroraMove 20s ease-in-out infinite alternate;
+}
+@keyframes auroraMove {
+  from { transform: translate3d(-4%, -2%, 0) scale(1); }
+  to   { transform: translate3d(4%, 3%, 0) scale(1.15); }
+}
+body[data-effect="particles"]::after,
+body[data-effect="stars"]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  animation: twinkle 4s ease-in-out infinite alternate;
+}
+body[data-effect="particles"]::after {
+  background-image:
+    radial-gradient(3px 3px at 12% 18%, rgba(34, 211, 238, 0.8), transparent),
+    radial-gradient(3px 3px at 30% 70%, rgba(232, 121, 249, 0.8), transparent),
+    radial-gradient(2px 2px at 55% 35%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(3px 3px at 78% 60%, rgba(34, 211, 238, 0.7), transparent),
+    radial-gradient(2px 2px at 88% 25%, rgba(232, 121, 249, 0.7), transparent),
+    radial-gradient(2px 2px at 45% 88%, rgba(255, 255, 255, 0.6), transparent);
+  background-repeat: no-repeat;
+}
+body[data-effect="stars"]::after {
+  background-image:
+    radial-gradient(1.5px 1.5px at 10% 20%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 25% 60%, #fff, transparent),
+    radial-gradient(1px 1px at 40% 30%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 60% 80%, #fff, transparent),
+    radial-gradient(1px 1px at 75% 40%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 85% 70%, #fff, transparent),
+    radial-gradient(1px 1px at 50% 10%, #fff, transparent),
+    radial-gradient(1px 1px at 92% 15%, #fff, transparent);
+  background-repeat: no-repeat;
+}
+@keyframes twinkle {
+  from { opacity: 0.35; }
+  to   { opacity: 1; }
+}
+
+/* ---- Profile banner image (overrides the gradient when a banner is set) ---- */
+.profile-banner.has-image {
+  opacity: 1;
+  background-size: cover;
+  background-position: center;
+}
+
+/* ---- Settings: appearance controls ---- */
+.settings-section {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 17px;
+  margin: 20px 0 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.opt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.opt {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.opt:hover {
+  border-color: var(--cyan);
+}
+.opt.active {
+  background: var(--accent);
+  color: #07111a;
+  font-weight: 700;
+  border-color: transparent;
+}
+.avatar-edit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.banner-preview {
+  height: 80px;
+  border-radius: 12px;
+  background: var(--accent);
+  opacity: 0.85;
+  margin-bottom: 8px;
+  background-size: cover;
+  background-position: center;
+}
+.banner-preview.has-image {
+  opacity: 1;
+}
+.upload-label {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.image-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.image-tools .image-input {
+  margin-top: 0;
+}
