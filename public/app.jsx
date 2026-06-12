@@ -80,8 +80,18 @@ const FAKE_SPORTS = {
 // PART 2 — API functions
 // ===========================================================================
 
+// Read the CSRF token the server set in a (non-httpOnly) cookie, so we can echo
+// it back in a header on state-changing requests (see server.js).
+function getCsrf() {
+  const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
 async function fetchJson(url, options = {}) {
-  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', 'x-csrf-token': getCsrf(), ...(options.headers || {}) },
+  });
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
@@ -92,7 +102,7 @@ async function apiUploadImage(file) {
   if (USE_FAKE_DATA) return URL.createObjectURL(file);
   const form = new FormData();
   form.append('image', file);
-  const res = await fetch('/api/media', { method: 'POST', body: form });
+  const res = await fetch('/api/media', { method: 'POST', body: form, headers: { 'x-csrf-token': getCsrf() } });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error((data && data.error) || 'Upload failed');
   return data.url;
@@ -104,7 +114,11 @@ async function apiLogin(u, p) { if (USE_FAKE_DATA) return FAKE_USER; return (awa
 async function apiLogout() { if (USE_FAKE_DATA) return; await fetchJson('/api/auth/logout', { method: 'POST' }); }
 async function apiUpdateProfile(fields) { if (USE_FAKE_DATA) { FAKE_USER = { ...FAKE_USER, ...fields }; return FAKE_USER; } return (await fetchJson('/api/users/me', { method: 'PUT', body: JSON.stringify(fields) })).user; }
 
-async function apiGetFeed() { if (USE_FAKE_DATA) return [...FAKE_TWEETS]; return await fetchJson('/api/posts'); }
+async function apiGetFeed(before) {
+  if (USE_FAKE_DATA) return [...FAKE_TWEETS];
+  const q = '?limit=20' + (before ? '&before=' + encodeURIComponent(before) : '');
+  return await fetchJson('/api/posts' + q);
+}
 async function apiGetProfile(username) {
   if (USE_FAKE_DATA) {
     const posts = FAKE_TWEETS.filter((t) => t.username === username);
@@ -443,7 +457,18 @@ function AppearancePanel({ tweaks, onPick, onSet }) {
 }
 
 // ---- Screens ----
-function FeedScreen({ posts, currentUser, cards, onPost, handlers, go }) {
+function FeedScreen({ posts, currentUser, cards, onPost, handlers, go, onLoadMore, hasMore, loadingMore }) {
+  // Infinite scroll: when the sentinel scrolls into view, load the next page.
+  const sentinel = useRef(null);
+  useEffect(() => {
+    if (!hasMore) return;
+    const el = sentinel.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) onLoadMore(); }, { rootMargin: '400px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, onLoadMore, posts.length]);
+
   return (
     <div className="feed-col">
       <div className="col-head"><div><h1>Home</h1></div></div>
@@ -458,6 +483,8 @@ function FeedScreen({ posts, currentUser, cards, onPost, handlers, go }) {
           </React.Fragment>
         ))}
         {posts.length === 0 && <div className="empty">No tweets yet — post the first ✦</div>}
+        {posts.length > 0 && hasMore && <div ref={sentinel} className="empty">{loadingMore ? 'Loading…' : ''}</div>}
+        {posts.length > 0 && !hasMore && <div className="empty">You're all caught up ✦</div>}
       </div>
     </div>
   );
@@ -809,13 +836,33 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [route, setRoute] = useState({ name: 'feed', params: null });
   const [toast, setToast] = useState(null);
+  const [cursor, setCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [tweaks, setTweaks] = useState(() => ({ ...DEFAULT_TWEAKS, ...(loadTweaks() || {}) }));
   const savedRef = useRef(loadTweaks());
   const toastTimer = useRef();
 
   const flash = (msg) => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 1600); };
 
-  async function reloadFeed() { setPosts(await apiGetFeed()); }
+  const PAGE = 20;
+  async function reloadFeed() {
+    const data = await apiGetFeed(null);
+    setPosts(data);
+    setCursor(data.length ? data[data.length - 1].sort_time : null);
+    setHasMore(data.length >= PAGE);
+  }
+  async function loadMore() {
+    if (!hasMore || loadingMore || !cursor) return;
+    setLoadingMore(true);
+    try {
+      const data = await apiGetFeed(cursor);
+      setPosts((ps) => [...ps, ...data]);
+      setCursor(data.length ? data[data.length - 1].sort_time : cursor);
+      setHasMore(data.length >= PAGE);
+    } catch (e) { console.error(e); } finally { setLoadingMore(false); }
+  }
+  function patchPosts(id, fn) { setPosts((ps) => ps.map((p) => (p.id === id ? fn(p) : p))); }
 
   useEffect(() => {
     (async () => {
@@ -844,15 +891,27 @@ function App() {
   const openTweet = (tw) => go('detail', tw);
   async function handleLogout() { await apiLogout(); setCurrentUser(null); setRoute({ name: 'feed' }); setPosts([]); }
 
-  // Shared tweet action handlers. `reload` defaults to reloadFeed but screens
-  // can pass their own (e.g. the profile reloads its own data).
-  const onLike = async (tw, reload = reloadFeed) => { try { tw.liked_by_me ? await apiUnlike(tw.id) : await apiLike(tw.id); } catch (e) { alert(e.message); } reload(); };
-  const onRt = async (tw, reload = reloadFeed) => { const was = tw.retweeted_by_me; try { was ? await apiUnretweet(tw.id) : await apiRetweet(tw.id); } catch (e) { alert(e.message); return; } flash(was ? 'Removed retweet' : 'Retweeted to your followers'); reload(); };
-  const onDelete = async (id, reload = reloadFeed) => { if (!confirm('Delete this tweet?')) return; try { await apiDeletePost(id); } catch (e) { alert(e.message); return; } flash('Tweet deleted'); reload(); };
   const onShare = () => { try { navigator.clipboard && navigator.clipboard.writeText(window.location.href); } catch (e) {} flash('Link copied'); };
-  const postTweet = async ({ text, imageUrl }) => { try { await apiCreatePost(text, imageUrl); } catch (e) { alert(e.message); return; } flash('Your tweet was posted'); reloadFeed(); };
 
-  const handlers = { onOpen: openTweet, onLike, onRt, onDelete, onShare };
+  // Generic handlers used by the Profile screen (it passes its own reload fn).
+  const genLike = async (tw, reload) => { try { tw.liked_by_me ? await apiUnlike(tw.id) : await apiLike(tw.id); } catch (e) { alert(e.message); } reload && reload(); };
+  const genRt = async (tw, reload) => { const was = tw.retweeted_by_me; try { was ? await apiUnretweet(tw.id) : await apiRetweet(tw.id); } catch (e) { alert(e.message); return; } flash(was ? 'Removed retweet' : 'Retweeted to your followers'); reload && reload(); };
+  const genDelete = async (id, reload) => { if (!confirm('Delete this tweet?')) return; try { await apiDeletePost(id); } catch (e) { alert(e.message); return; } flash('Tweet deleted'); reload && reload(); };
+  const genHandlers = { onOpen: openTweet, onLike: genLike, onRt: genRt, onDelete: genDelete, onShare };
+
+  // Feed handlers update the loaded pages IN PLACE so paging/scroll survive a
+  // like; they reload only when the feed's structure changes (retweet).
+  const feedLike = async (tw) => {
+    const on = !tw.liked_by_me;
+    patchPosts(tw.id, (p) => ({ ...p, liked_by_me: on, like_count: p.like_count + (on ? 1 : -1) }));
+    try { on ? await apiLike(tw.id) : await apiUnlike(tw.id); }
+    catch (e) { alert(e.message); patchPosts(tw.id, (p) => ({ ...p, liked_by_me: !on, like_count: p.like_count + (on ? -1 : 1) })); }
+  };
+  const feedRt = async (tw) => { const was = tw.retweeted_by_me; try { was ? await apiUnretweet(tw.id) : await apiRetweet(tw.id); } catch (e) { alert(e.message); return; } flash(was ? 'Removed retweet' : 'Retweeted to your followers'); reloadFeed(); };
+  const feedDelete = async (id) => { if (!confirm('Delete this tweet?')) return; try { await apiDeletePost(id); } catch (e) { alert(e.message); return; } flash('Tweet deleted'); setPosts((ps) => ps.filter((p) => p.id !== id)); };
+  const postTweet = async ({ text, imageUrl }) => { let p; try { p = await apiCreatePost(text, imageUrl); } catch (e) { alert(e.message); return; } flash('Your tweet was posted'); setPosts((ps) => [p, ...ps]); };
+  const feedHandlers = { onOpen: openTweet, onLike: feedLike, onRt: feedRt, onDelete: feedDelete, onShare };
+
   const cards = tweaks.cards !== 'rows';
 
   // Apply theme + layout to <html> (NOT an inner div). CSS custom properties
@@ -897,9 +956,9 @@ function App() {
   } else if (route.name === 'settings') {
     screen = <SettingsScreen currentUser={currentUser} onSaved={(u) => { setCurrentUser(u); flash('Profile saved'); }} onLogout={handleLogout} go={go} />;
   } else if (route.name === 'profile') {
-    screen = <ProfileScreen username={route.params || currentUser.username} currentUser={currentUser} cards={cards} handlers={handlers} go={go} />;
+    screen = <ProfileScreen username={route.params || currentUser.username} currentUser={currentUser} cards={cards} handlers={genHandlers} go={go} />;
   } else {
-    screen = <FeedScreen posts={posts} currentUser={currentUser} cards={cards} onPost={postTweet} handlers={handlers} go={go} />;
+    screen = <FeedScreen posts={posts} currentUser={currentUser} cards={cards} onPost={postTweet} handlers={feedHandlers} go={go} onLoadMore={loadMore} hasMore={hasMore} loadingMore={loadingMore} />;
   }
 
   return wrap(

@@ -1,26 +1,30 @@
 // ===========================================================================
 // server.js — the Express app. This is the file `npm start` runs.
 // ===========================================================================
-// It does four things, in order:
-//   1. Parse JSON request bodies.
-//   2. Set up logged-in sessions (stored in Postgres).
-//   3. Mount the API routes  (/api/auth, /api/posts, /api/users).
-//   4. Serve the frontend in /public as static files.
-// Because the SAME server does both the API and the frontend, the whole app
-// runs from one process — and deploys to Render as a single web service.
+// Order of middleware matters:
+//   1. helmet            — security HTTP headers (incl. a Content-Security-Policy)
+//   2. express.json      — parse JSON request bodies
+//   3. session           — remember who is logged in (stored in Postgres)
+//   4. rate limiting      — slow down abuse / brute-force
+//   5. CSRF protection    — block cross-site state-changing requests
+//   6. API routes + static frontend
+// One server serves both the API and the frontend, so it deploys to Render as
+// a single web service.
 // ===========================================================================
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const session = require('express-session');
-const PgSession = require('connect-pg-simple')(session); // stores sessions in Postgres
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const PgSession = require('connect-pg-simple')(session);
 
 require('dotenv').config();
 
 const pool = require('./db');
 
-// Route handlers (each is an Express Router).
 const authRoutes = require('./routes/auth');
 const postRoutes = require('./routes/posts');
 const userRoutes = require('./routes/users');
@@ -29,75 +33,130 @@ const sportsRoutes = require('./routes/sports');
 
 const app = express();
 
-// Read config from the environment, with friendly local defaults.
 const PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-only-insecure-secret';
+// "Production" = deployed (Render sets RENDER=true). Used to turn on
+// https-only cookies, which would break plain-http local development.
+const isProd = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
 
-// Render (and most hosts) put your app behind a proxy. This lets express
-// trust that proxy — needed if you later turn on secure (https-only) cookies.
+// Render puts the app behind a proxy; trusting it lets secure cookies + the
+// rate limiter see the real client (one hop).
 app.set('trust proxy', 1);
 
-// --- 1) Parse JSON bodies, so req.body works on POST/PUT requests. ---
-app.use(express.json());
-
-// --- 2) Sessions: remember who is logged in. ---
+// --- 1) Security headers -----------------------------------------------------
+// The CSP is hand-written because this app has no build step: React + Babel
+// load from unpkg, and Babel compiles JSX in the browser (which needs
+// 'unsafe-eval'). We DON'T use helmet's default CSP because its
+// upgrade-insecure-requests breaks same-origin assets on local http.
 app.use(
-  session({
-    store: new PgSession({
-      pool,                       // reuse our one shared connection pool
-      createTableIfMissing: true, // create the "session" table if it isn't there
-    }),
-    secret: SESSION_SECRET,       // signs the cookie so it can't be tampered with
-    resave: false,                // don't re-save unchanged sessions
-    saveUninitialized: false,     // don't create empty sessions for anonymous visitors
-    cookie: {
-      httpOnly: true,                          // JS in the browser can't read the cookie
-      maxAge: 1000 * 60 * 60 * 24 * 7,         // stay logged in for 7 days
-      sameSite: 'lax',
-      // secure: true,  // <- turn this on in real production (requires https).
-      //                //    We leave it off so login works on plain http locally.
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://unpkg.com'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'], // uploads, previews, external links, crests
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'self'"],
+      },
     },
   })
 );
 
-// --- 3) API routes. The order is "mount path" + the router that handles it. ---
+// --- 2) Parse JSON bodies ---
+app.use(express.json());
+
+// --- 3) Sessions: remember who is logged in. ---
+app.use(
+  session({
+    store: new PgSession({ pool, createTableIfMissing: true }),
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,                   // JS can't read the session cookie
+      maxAge: 1000 * 60 * 60 * 24 * 7,  // stay logged in for 7 days
+      sameSite: 'lax',                  // first line of CSRF defense
+      secure: isProd,                   // https-only in production
+    },
+  })
+);
+
+// --- 4) Rate limiting --------------------------------------------------------
+// A generous general cap, plus a much tighter cap on auth endpoints so nobody
+// can brute-force passwords. Counters are per-IP and in-memory (reset on
+// restart) — fine for one instance; use a shared store if you scale out.
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false });
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please wait a few minutes and try again.' },
+});
+app.use('/api', generalLimiter);
+app.use(['/api/auth/login', '/api/auth/signup'], authLimiter);
+
+// --- 5) CSRF protection (stateless "double-submit cookie") -------------------
+// We set a random token in a NON-httpOnly cookie. The frontend reads it and
+// echoes it back in an `x-csrf-token` header on every state-changing request.
+// A cross-site attacker can send our session cookie but CANNOT read the token
+// cookie (same-origin policy) nor set our custom header, so forged requests
+// fail. We never store the token server-side — we just compare header==cookie.
+function parseCookies(header) {
+  const out = {};
+  (header || '').split(';').forEach((part) => {
+    const i = part.indexOf('=');
+    if (i > -1) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  });
+  return out;
+}
+function csrfProtection(req, res, next) {
+  const cookies = parseCookies(req.headers.cookie);
+  let token = cookies.csrf_token;
+  if (!token) {
+    token = crypto.randomBytes(24).toString('hex');
+    res.cookie('csrf_token', token, { httpOnly: false, sameSite: 'lax', secure: isProd, path: '/', maxAge: 1000 * 60 * 60 * 24 * 7 });
+  }
+  const mutating = req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE' || req.method === 'PATCH';
+  if (mutating && req.get('x-csrf-token') !== token) {
+    return res.status(403).json({ error: 'Invalid or missing CSRF token. Refresh the page and try again.' });
+  }
+  next();
+}
+app.use('/api', csrfProtection);
+
+// --- 6) API routes + static frontend ---
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/sports', sportsRoutes);
 
-// --- 4) Serve the frontend. Anything not matched above is looked up in /public. ---
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// --- Central error handler. Any route that calls next(err) lands here. ---
-// We log the real error for ourselves, but send the user a generic message
-// so we never leak internal details.
+// --- Central error handler. ---
 app.use((err, req, res, next) => {
   console.error('Unexpected error:', err);
   res.status(500).json({ error: 'Something went wrong on the server.' });
 });
 
 // ---------------------------------------------------------------------------
-// Start up: make sure the tables exist, THEN start listening.
+// Start up: ensure the tables exist (schema.sql is idempotent), then listen.
 // ---------------------------------------------------------------------------
-// We run schema.sql on every startup. Because every statement in it uses
-// "IF NOT EXISTS", this is safe to run repeatedly: it creates the tables the
-// first time and does nothing afterward. The payoff is that you never have to
-// remember to "load the schema" by hand — not locally, and not on Render.
-// (Keep schema.sql idempotent if you edit it, or startup will fail.)
 async function start() {
   try {
     const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
     await pool.query(schema);
     console.log('Database schema is ready.');
-
-    app.listen(PORT, () => {
-      console.log(`BoonTweet running at http://localhost:${PORT}`);
-    });
+    app.listen(PORT, () => console.log(`BoonTweet running at http://localhost:${PORT}`));
   } catch (err) {
     console.error('Failed to start — could not connect to the database:', err.message);
-    process.exit(1); // exit so the hosting platform knows the start failed
+    process.exit(1);
   }
 }
 
