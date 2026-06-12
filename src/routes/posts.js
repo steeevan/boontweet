@@ -74,7 +74,8 @@ router.get('/', async (req, res, next) => {
     // Pagination: one page, newest first. Next page = ?before=<sort_time of the
     // last item you have>. Keeps the feed fast no matter how many posts exist.
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const before = req.query.before || null; // ISO timestamp cursor, or null for page 1
+    const before = req.query.before || null;                                   // sort_time of last row
+    const beforeId = req.query.before_id ? parseInt(req.query.before_id, 10) : null; // its id (tie-breaker)
     const following = req.query.scope === 'following';
 
     // "Following" feed: only posts/retweets by people the viewer follows (plus
@@ -82,6 +83,17 @@ router.get('/', async (req, res, next) => {
     if (following && !viewerId) return res.json([]);
     const followFilter = (col) =>
       following ? `WHERE ${col} = $1 OR ${col} IN (SELECT following_id FROM follows WHERE follower_id = $1)` : '';
+
+    // COMPOUND cursor matching ORDER BY (sort_time DESC, id DESC): comparing the
+    // (sort_time, id) pair means rows that share a timestamp aren't skipped at a
+    // page boundary. Params are appended positionally so there are never unused
+    // placeholders (Postgres can't infer the type of an unreferenced param).
+    const params = [viewerId];
+    let cursorClause = '';
+    if (before && beforeId != null) { params.push(before, beforeId); cursorClause = 'WHERE (feed.sort_time, feed.id) < ($2, $3)'; }
+    else if (before) { params.push(before); cursorClause = 'WHERE feed.sort_time < $2'; }
+    params.push(limit);
+    const limitParam = '$' + params.length;
 
     const result = await pool.query(
       `SELECT * FROM (
@@ -94,10 +106,10 @@ router.get('/', async (req, res, next) => {
            JOIN users u ON u.id = p.user_id
            JOIN users ru ON ru.id = r.user_id ${followFilter('r.user_id')}
        ) feed
-       WHERE ($2::timestamptz IS NULL OR feed.sort_time < $2)
+       ${cursorClause}
        ORDER BY feed.sort_time DESC, feed.id DESC
-       LIMIT $3`,
-      [viewerId, before, limit]
+       LIMIT ${limitParam}`,
+      params
     );
     res.json(result.rows);
   } catch (err) {
@@ -264,13 +276,16 @@ router.post('/:id/comments', requireLogin, async (req, res, next) => {
     if (post.rows.length === 0) return res.status(404).json({ error: 'Post not found.' });
 
     const inserted = await pool.query(
-      'INSERT INTO comments (post_id, user_id, content) VALUES ($1, $2, $3) RETURNING id, content, created_at',
+      'INSERT INTO comments (post_id, user_id, content) VALUES ($1, $2, $3) RETURNING id',
       [postId, req.session.userId, content]
     );
-    res.status(201).json({
-      ...inserted.rows[0],
-      username: req.session.username,
-    });
+    // Return the same shape GET /comments uses (incl. display_name + avatar).
+    const full = await pool.query(
+      `SELECT c.id, c.content, c.created_at, u.username, u.display_name, u.avatar_url, u.avatar_anim
+         FROM comments c JOIN users u ON u.id = c.user_id WHERE c.id = $1`,
+      [inserted.rows[0].id]
+    );
+    res.status(201).json(full.rows[0]);
   } catch (err) {
     next(err);
   }

@@ -358,7 +358,7 @@ button { font-family: inherit; }
 .detail-tweet .head-row { display: flex; gap: var(--gap); align-items: center; }
 .detail-tweet .name { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 5px; }
 .detail-tweet .handle { color: var(--muted); font-size: 14.5px; }
-.detail-text { font-size: 23px; line-height: 1.45; margin: 14px 0 0; white-space: pre-wrap; text-wrap: pretty; }
+.detail-text { font-size: 23px; line-height: 1.45; margin: 14px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
 .detail-meta {
   display: flex; gap: 18px; flex-wrap: wrap; padding: 14px 0; margin-top: 12px;
   border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
@@ -390,7 +390,7 @@ button { font-family: inherit; }
 .profile-info { padding: 12px var(--pad) 0; }
 .profile-info .nm { font-family: var(--font-display); font-weight: 800; font-size: 23px; letter-spacing: -.01em; display: flex; align-items: center; gap: 6px; }
 .profile-info .hd { color: var(--muted); font-size: 15px; }
-.profile-info .bio { margin: 12px 0; font-size: 15.5px; line-height: 1.5; text-wrap: pretty; }
+.profile-info .bio { margin: 12px 0; font-size: 15.5px; line-height: 1.5; overflow-wrap: anywhere; text-wrap: pretty; }
 .profile-info .meta { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 14.5px; }
 .profile-info .meta .ico { width: 17px; height: 17px; vertical-align: -3px; margin-right: 5px; }
 .profile-stats { display: flex; gap: 20px; margin: 12px 0 4px; font-size: 14px; color: var(--muted); }
@@ -918,4 +918,9 @@ textarea.field { resize: vertical; min-height: 84px; line-height: 1.45; }
   .tweet.is-card, .feed-list.cards .compose, .match, .standings, .sports-hero {
     margin-left: 10px; margin-right: 10px;
   }
+  /* Standings: scroll horizontally instead of clipping the Pts column. */
+  .standings { overflow-x: auto; }
+  .standings table { min-width: 360px; }
+  /* Keep the toast above the bottom nav. */
+  .toast { bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 }

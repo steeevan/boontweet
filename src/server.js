@@ -91,7 +91,9 @@ app.use(
 // A generous general cap, plus a much tighter cap on auth endpoints so nobody
 // can brute-force passwords. Counters are per-IP and in-memory (reset on
 // restart) — fine for one instance; use a shared store if you scale out.
-const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false });
+// Skip GET reads (feed paging, search-as-you-type) so an active session can't
+// lock itself out; the cap still covers mutations, and auth has its own limiter.
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, skip: (req) => req.method === 'GET' });
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,

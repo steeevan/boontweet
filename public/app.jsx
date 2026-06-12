@@ -114,10 +114,10 @@ async function apiLogin(u, p) { if (USE_FAKE_DATA) return FAKE_USER; return (awa
 async function apiLogout() { if (USE_FAKE_DATA) return; await fetchJson('/api/auth/logout', { method: 'POST' }); }
 async function apiUpdateProfile(fields) { if (USE_FAKE_DATA) { FAKE_USER = { ...FAKE_USER, ...fields }; return FAKE_USER; } return (await fetchJson('/api/users/me', { method: 'PUT', body: JSON.stringify(fields) })).user; }
 
-async function apiGetFeed(before, scope) {
+async function apiGetFeed(cursor, scope) {
   if (USE_FAKE_DATA) return [...FAKE_TWEETS];
   let q = '?limit=20';
-  if (before) q += '&before=' + encodeURIComponent(before);
+  if (cursor && cursor.t) q += '&before=' + encodeURIComponent(cursor.t) + '&before_id=' + encodeURIComponent(cursor.id);
   if (scope === 'following') q += '&scope=following';
   return await fetchJson('/api/posts' + q);
 }
@@ -983,27 +983,33 @@ function App() {
   const [tweaks, setTweaks] = useState(() => ({ ...DEFAULT_TWEAKS, ...(loadTweaks() || {}) }));
   const savedRef = useRef(loadTweaks());
   const toastTimer = useRef();
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope; // always reflects the current feed scope (for async guards)
 
   const flash = (msg) => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 1600); };
 
   const PAGE = 20;
+  // Compound cursor (timestamp + id) so paging is stable when rows share a time.
+  const cursorOf = (data) => (data.length ? { t: data[data.length - 1].sort_time, id: data[data.length - 1].id } : null);
   async function reloadFeed(sc = scope) {
     const data = await apiGetFeed(null, sc);
     setPosts(data);
-    setCursor(data.length ? data[data.length - 1].sort_time : null);
+    setCursor(cursorOf(data));
     setHasMore(data.length >= PAGE);
   }
   async function loadMore() {
     if (!hasMore || loadingMore || !cursor) return;
+    const sc = scope; // remember which feed this page belongs to
     setLoadingMore(true);
     try {
-      const data = await apiGetFeed(cursor, scope);
+      const data = await apiGetFeed(cursor, sc);
+      if (sc !== scopeRef.current) return; // user switched feeds mid-request — drop stale page
       setPosts((ps) => [...ps, ...data]);
-      setCursor(data.length ? data[data.length - 1].sort_time : cursor);
+      setCursor(cursorOf(data) || cursor);
       setHasMore(data.length >= PAGE);
     } catch (e) { console.error(e); } finally { setLoadingMore(false); }
   }
-  function switchScope(sc) { if (sc === scope) return; setScope(sc); reloadFeed(sc); }
+  function switchScope(sc) { if (sc === scope) return; setScope(sc); setCursor(null); setHasMore(true); reloadFeed(sc); }
   function patchPosts(id, fn) { setPosts((ps) => ps.map((p) => (p.id === id ? fn(p) : p))); }
 
   useEffect(() => {
@@ -1031,7 +1037,7 @@ function App() {
 
   function go(name, params = null) { setRoute({ name, params }); window.scrollTo({ top: 0 }); }
   const openTweet = (tw) => go('detail', tw);
-  async function handleLogout() { await apiLogout(); setCurrentUser(null); setRoute({ name: 'feed' }); setPosts([]); }
+  async function handleLogout() { await apiLogout(); setCurrentUser(null); setRoute({ name: 'feed' }); setPosts([]); setScope('all'); setCursor(null); setHasMore(true); }
 
   const onShare = () => { try { navigator.clipboard && navigator.clipboard.writeText(window.location.href); } catch (e) {} flash('Link copied'); };
 
@@ -1094,7 +1100,7 @@ function App() {
   );
 
   if (loading) return wrap(<div className="auth-stage"><div className="empty">Loading…</div></div>);
-  if (!currentUser) return wrap(<AuthScreen onAuthed={(u) => { setCurrentUser(u); reloadFeed(); }} />);
+  if (!currentUser) return wrap(<AuthScreen onAuthed={(u) => { setCurrentUser(u); setScope('all'); setCursor(null); setHasMore(true); reloadFeed('all'); }} />);
 
   let screen;
   if (route.name === 'detail' && route.params) {
@@ -1130,7 +1136,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 // Register the service worker (PWA: installable + offline). No-op if the
 // browser doesn't support it or registration fails.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').catch(() => {});
-  });
+  // app.jsx runs after Babel compiles it — usually AFTER window 'load' has
+  // already fired — so register immediately instead of waiting for that event.
+  // NOTE: we deliberately do NOT force a reload on 'controllerchange'. That
+  // event also fires on the very first install (clients.claim), which would
+  // reload every new visitor. New versions apply on the next page load anyway,
+  // since the app shell is fetched network-first.
+  navigator.serviceWorker.register('/service-worker.js').catch(() => {});
 }

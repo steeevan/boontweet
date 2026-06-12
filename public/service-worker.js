@@ -4,7 +4,7 @@
 //   - cross-origin (CDN: React, Babel, fonts): cache-first (versioned/immutable)
 //   - same-origin shell (html/css/jsx): network-first, fall back to cache,
 //     then to the cached index.html (so an offline launch still boots).
-const CACHE = 'boontweet-v1';
+const CACHE = 'boontweet-v2';
 const SHELL = ['/', '/index.html', '/style.css', '/app.jsx', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', (e) => {
@@ -27,13 +27,18 @@ self.addEventListener('fetch', (e) => {
   if (url.origin === location.origin && url.pathname.startsWith('/api/')) return; // live data
 
   if (url.origin !== location.origin) {
-    // CDN assets (unpkg, Google Fonts): cache-first.
+    // CDN assets (unpkg, Google Fonts): stale-while-revalidate. Serve the cached
+    // copy instantly for speed, but always refresh it in the background so we're
+    // never pinned to an old React/Babel (these are rolling-tag URLs).
     e.respondWith(
-      caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
-        return res;
-      }))
+      caches.match(req).then((hit) => {
+        const network = fetch(req).then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+          return res;
+        }).catch(() => hit);
+        return hit || network;
+      })
     );
     return;
   }
