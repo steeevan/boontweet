@@ -19,11 +19,8 @@ const MAX_DISPLAY_NAME = 50;
 const MAX_BIO = 160;
 const MAX_URL = 500;
 
-// The allowed choices for the appearance options. Anything not in these lists
-// is ignored (falls back to a safe default), so a user can't inject odd values.
-const THEMES = ['neon', 'sunset', 'matrix', 'bubblegum'];
-const MASCOTS = ['bird', 'fox', 'alien', 'star', 'ghost'];
-const EFFECTS = ['aurora', 'particles', 'stars'];
+// The 8 themes from the design. Anything not in this list falls back to 'neon'.
+const THEMES = ['neon', 'light', 'y2k', 'brutalist', 'terminal', 'glass', 'editorial', 'cozy'];
 
 // A media URL must be one of ours (/api/media/..) or an external http(s) link.
 function validMediaUrl(u) {
@@ -31,38 +28,51 @@ function validMediaUrl(u) {
 }
 
 // ---------------------------------------------------------------------------
-// PUT /api/users/me  -> replace the logged-in user's profile + appearance.
+// PUT /api/users/me  -> update the logged-in user's profile + appearance.
 // ---------------------------------------------------------------------------
-// The Settings page always sends the full set of fields, so this overwrites
-// them all (sending an empty value clears that field).
+// PARTIAL update: we only change the fields that are actually present in the
+// request body. That way the Settings page can save name/bio without wiping
+// the theme, and the Appearance panel can save just the theme without wiping
+// the bio. Each field is validated; unknown fields are ignored.
 router.put('/me', requireLogin, async (req, res, next) => {
   try {
-    const b = req.body;
-    const displayName = (b.display_name || '').trim() || null;
-    const bio = (b.bio || '').trim() || null;
-    const avatarUrl = (b.avatar_url || '').trim() || null;
-    const bannerUrl = (b.banner_url || '').trim() || null;
-    const theme = THEMES.includes(b.theme) ? b.theme : 'neon';
-    const avatarAnim = MASCOTS.includes(b.avatar_anim) ? b.avatar_anim : null;
-    const pageEffect = EFFECTS.includes(b.page_effect) ? b.page_effect : null;
+    const b = req.body || {};
+    const sets = [];   // "column = $n" fragments
+    const params = []; // matching values
 
-    if (displayName && displayName.length > MAX_DISPLAY_NAME) {
-      return res.status(400).json({ error: `Display name can be at most ${MAX_DISPLAY_NAME} characters.` });
+    // Helper: queue a column update with a validated value.
+    const set = (col, val) => { params.push(val); sets.push(`${col} = $${params.length}`); };
+
+    if ('display_name' in b) {
+      const v = (b.display_name || '').trim() || null;
+      if (v && v.length > MAX_DISPLAY_NAME) return res.status(400).json({ error: `Display name can be at most ${MAX_DISPLAY_NAME} characters.` });
+      set('display_name', v);
     }
-    if (bio && bio.length > MAX_BIO) {
-      return res.status(400).json({ error: `Bio can be at most ${MAX_BIO} characters.` });
+    if ('bio' in b) {
+      const v = (b.bio || '').trim() || null;
+      if (v && v.length > MAX_BIO) return res.status(400).json({ error: `Bio can be at most ${MAX_BIO} characters.` });
+      set('bio', v);
     }
-    if (!validMediaUrl(avatarUrl) || !validMediaUrl(bannerUrl)) {
-      return res.status(400).json({ error: 'Image URLs must be uploaded images or start with http(s).' });
+    if ('avatar_url' in b) {
+      const v = (b.avatar_url || '').trim() || null;
+      if (!validMediaUrl(v)) return res.status(400).json({ error: 'Avatar URL must be an uploaded image or start with http(s).' });
+      set('avatar_url', v);
+    }
+    if ('banner_url' in b) {
+      const v = (b.banner_url || '').trim() || null;
+      if (!validMediaUrl(v)) return res.status(400).json({ error: 'Banner URL must be an uploaded image or start with http(s).' });
+      set('banner_url', v);
+    }
+    if ('theme' in b) set('theme', THEMES.includes(b.theme) ? b.theme : 'neon');
+
+    if (sets.length === 0) {
+      return res.status(400).json({ error: 'Nothing to update.' });
     }
 
+    params.push(req.session.userId);
     const result = await pool.query(
-      `UPDATE users
-          SET display_name = $1, bio = $2, avatar_url = $3, banner_url = $4,
-              theme = $5, avatar_anim = $6, page_effect = $7
-        WHERE id = $8
-        RETURNING ${USER_COLS}`,
-      [displayName, bio, avatarUrl, bannerUrl, theme, avatarAnim, pageEffect, req.session.userId]
+      `UPDATE users SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING ${USER_COLS}`,
+      params
     );
     res.json({ user: result.rows[0] });
   } catch (err) {

@@ -1,789 +1,918 @@
 // ===========================================================================
-// app.jsx — the entire BoonTweet frontend (React, no build step).
+// app.jsx — BoonTweet frontend (React via CDN, no build step).
 // ===========================================================================
-// THREE PARTS:
-//   PART 1: FAKE DATA      — hardcoded data so the UI works with NO backend.
-//   PART 2: API FUNCTIONS  — the "seam": fake data when USE_FAKE_DATA is true,
-//                            real fetch() calls when it's false.
-//   PART 3: COMPONENTS      — the React UI.
-// ===========================================================================
-
-const { useState, useEffect } = React;
-
-// ===========================================================================
-// PART 1 — FAKE DATA  (only used when USE_FAKE_DATA === true)
+// Implements the "BoonTweet — Themes" design: 8 live-switchable themes with a
+// layout engine (sidebar vs top-tabs nav, card styles, density), wired to the
+// real Express + Postgres backend. Theme/styling lives in style.css under
+// [data-theme] / [data-nav] / [data-card] / [data-density]; this file sets
+// those attributes and renders the design's components against real data.
+//
+//  PART 1: theme metadata + fake data (USE_FAKE_DATA seam)
+//  PART 2: API functions (fake data vs real fetch)
+//  PART 3: components, screens, the Appearance panel, and the App controller
 // ===========================================================================
 
-const USE_FAKE_DATA = false; // 🔁 true = no backend needed; false = live server
+const { useState, useEffect, useRef } = React;
 
-let FAKE_USER = {
-  id: 1, username: "demo", display_name: "Demo Human",
-  bio: "Just here learning to build apps. 🚀",
-  avatar_url: null, banner_url: null, theme: "neon", avatar_anim: "bird", page_effect: "aurora",
-  created_at: new Date().toISOString(),
-};
+// ===========================================================================
+// PART 1 — theme registry + fake data
+// ===========================================================================
 
-let FAKE_TWEETS = [
-  { id: 3, username: "ada", display_name: "Ada L.", avatar_url: null, avatar_anim: "star",
-    content: "Just wrote my first SQL query and it returned the right rows. Powerful feeling.",
-    image_url: null, created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-    like_count: 4, comment_count: 1, retweet_count: 0, liked_by_me: false, retweeted_by_me: false, retweeted_by: null },
-  { id: 2, username: "grace", display_name: "Grace H.", avatar_url: null, avatar_anim: null,
-    content: "A function that does one thing is easier to debug than one that does five.",
-    image_url: "https://picsum.photos/seed/boontweet/600/320",
-    created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    like_count: 12, comment_count: 2, retweet_count: 3, liked_by_me: true, retweeted_by_me: false, retweeted_by: null },
-  { id: 1, username: "demo", display_name: "Demo Human", avatar_url: null, avatar_anim: "bird",
-    content: "Hello BoonTweet! 🐦 This tweet is fake data — there's no server yet.",
-    image_url: null, created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    like_count: 1, comment_count: 0, retweet_count: 0, liked_by_me: false, retweeted_by_me: false, retweeted_by: null },
+const USE_FAKE_DATA = false; // 🔁 true = browse a mock with no backend; false = live server
+
+// The 8 themes. CSS for each lives in style.css ([data-theme="…"]); here we
+// keep the human-facing name, blurb, the curated accent palette, and the
+// layout defaults a theme "snaps" to when you pick it.
+const THEMES = [
+  { id: 'neon',      name: 'Dark Neon',   blurb: 'Glassy black + cyan/magenta glow',     accent: '#22d3ee', nav: 'sidebar', card: 'glassy',   density: 'spacious', accents: ['#22d3ee', '#e879f9', '#a3e635', '#fb923c', '#818cf8'] },
+  { id: 'light',     name: 'Clean Light', blurb: 'Minimal, white, bordered',             accent: '#2563eb', nav: 'tabs',    card: 'rows',     density: 'regular',  accents: ['#2563eb', '#0ea5e9', '#7c3aed', '#e11d48', '#059669'] },
+  { id: 'y2k',       name: 'Y2K Pop',     blurb: 'Candy colors, chunky outlines',        accent: '#ff2d9b', nav: 'sidebar', card: 'flat',     density: 'spacious', accents: ['#ff2d9b', '#7857ff', '#00c2ff', '#ffb300', '#00c853'] },
+  { id: 'brutalist', name: 'Brutalist',   blurb: 'Hard borders, no curves, loud',        accent: '#1f3bff', nav: 'tabs',    card: 'bordered', density: 'compact',  accents: ['#1f3bff', '#ff3b1f', '#000000', '#008a3c', '#ff00aa'] },
+  { id: 'terminal',  name: 'Terminal',    blurb: 'Green phosphor + scanlines',           accent: '#62ff00', nav: 'sidebar', card: 'rows',     density: 'compact',  accents: ['#62ff00', '#ffd400', '#00e5ff', '#ff5c8a', '#ff8a00'] },
+  { id: 'glass',     name: 'Glass',       blurb: 'Frosted panes on a color blur',        accent: '#a78bfa', nav: 'sidebar', card: 'glassy',   density: 'spacious', accents: ['#a78bfa', '#5eead4', '#f0abfc', '#7dd3fc', '#fda4af'] },
+  { id: 'editorial', name: 'Editorial',   blurb: 'Warm paper, serif, ink',               accent: '#b5471f', nav: 'tabs',    card: 'rows',     density: 'regular',  accents: ['#b5471f', '#1f6b5c', '#8a6d1f', '#7b3f6e', '#2c2419'] },
+  { id: 'cozy',      name: 'Cozy Pastel', blurb: 'Soft lavender, rounded, gentle',       accent: '#8b7be8', nav: 'sidebar', card: 'flat',     density: 'spacious', accents: ['#8b7be8', '#5ec5b6', '#f48fb1', '#7cb6f0', '#f0a868'] },
+];
+const THEME_BY_ID = Object.fromEntries(THEMES.map((t) => [t.id, t]));
+
+const FONTS = [
+  { value: '', label: 'Theme default' },
+  { value: "'Space Grotesk', system-ui, sans-serif", label: 'Space Grotesk' },
+  { value: "'Plus Jakarta Sans', system-ui, sans-serif", label: 'Plus Jakarta' },
+  { value: "'Sora', system-ui, sans-serif", label: 'Sora' },
+  { value: "'Fredoka', system-ui, sans-serif", label: 'Fredoka' },
+  { value: "'Archivo', system-ui, sans-serif", label: 'Archivo' },
+  { value: "'Quicksand', system-ui, sans-serif", label: 'Quicksand' },
+  { value: "'Newsreader', Georgia, serif", label: 'Newsreader' },
+  { value: "'Space Mono', ui-monospace, monospace", label: 'Space Mono' },
+  { value: 'system-ui, -apple-system, sans-serif', label: 'System' },
 ];
 
-let FAKE_COMMENTS = {
-  3: [{ id: 1, username: "grace", display_name: "Grace H.", avatar_url: null, avatar_anim: null, content: "Welcome to the club! 🎉", created_at: new Date().toISOString() }],
-  2: [
-    { id: 2, username: "ada", display_name: "Ada L.", avatar_url: null, avatar_anim: "star", content: "100%.", created_at: new Date().toISOString() },
-    { id: 3, username: "demo", display_name: "Demo Human", avatar_url: null, avatar_anim: "bird", content: "Saving this.", created_at: new Date().toISOString() },
+// Static, decorative trends for the sidebar aside (the design's were mock too).
+const TRENDS = [
+  { cat: 'World Cup · Live', tt: '#WorldCup2026', ct: '1.2M posts' },
+  { cat: 'Sports · Trending', tt: 'Group of Death', ct: '40.5K posts' },
+  { cat: 'Trending in Tech', tt: '4px shadows', ct: '12.1K posts' },
+];
+
+// --- minimal fake data (only used when USE_FAKE_DATA === true) ---
+let FAKE_USER = { id: 1, username: 'demo', display_name: 'Demo Human', bio: 'Browsing the mock 🛰️', avatar_url: null, banner_url: null, theme: 'neon', created_at: new Date().toISOString() };
+let FAKE_TWEETS = [
+  { id: 2, username: 'ada', display_name: 'Ada L.', avatar_url: null, content: 'First SQL query returned the right rows. Powerful feeling.', image_url: null, created_at: new Date(Date.now() - 6e5).toISOString(), like_count: 12, comment_count: 1, retweet_count: 2, liked_by_me: true, retweeted_by_me: false, retweeted_by: null },
+  { id: 1, username: 'demo', display_name: 'Demo Human', avatar_url: null, content: 'Hello BoonTweet! 🐦 (fake data — no server)', image_url: 'https://picsum.photos/seed/boon/600/340', created_at: new Date(Date.now() - 36e5).toISOString(), like_count: 3, comment_count: 0, retweet_count: 0, liked_by_me: false, retweeted_by_me: false, retweeted_by: null },
+];
+let FAKE_COMMENTS = { 2: [{ id: 1, username: 'demo', display_name: 'Demo Human', avatar_url: null, content: 'congrats!', created_at: new Date().toISOString() }] };
+const FAKE_SPORTS = {
+  matches: [
+    { id: 1, utcDate: new Date().toISOString(), status: 'IN_PLAY', group: 'GROUP C', home: { name: 'Argentina', crest: null }, away: { name: 'Croatia', crest: null }, homeScore: 2, awayScore: 1 },
+    { id: 2, utcDate: new Date(Date.now() + 1e7).toISOString(), status: 'TIMED', group: 'GROUP E', home: { name: 'France', crest: null }, away: { name: 'USA', crest: null }, homeScore: null, awayScore: null },
+    { id: 3, utcDate: new Date(Date.now() - 1e7).toISOString(), status: 'FINISHED', group: 'GROUP A', home: { name: 'Mexico', crest: null }, away: { name: 'Japan', crest: null }, homeScore: 3, awayScore: 1 },
   ],
+  groups: [{ group: 'GROUP C', table: [
+    { position: 1, team: 'Argentina', crest: null, played: 2, won: 2, draw: 0, lost: 0, gd: 3, points: 6 },
+    { position: 2, team: 'Brazil', crest: null, played: 2, won: 1, draw: 1, lost: 0, gd: 2, points: 4 },
+    { position: 3, team: 'Croatia', crest: null, played: 2, won: 0, draw: 1, lost: 1, gd: -1, points: 1 },
+    { position: 4, team: 'Nigeria', crest: null, played: 2, won: 0, draw: 0, lost: 2, gd: -4, points: 0 },
+  ] }],
 };
 
 // ===========================================================================
-// PART 2 — API FUNCTIONS  (the seam between fake data and the live server)
+// PART 2 — API functions
 // ===========================================================================
 
 async function fetchJson(url, options = {}) {
-  const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...options });
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
   return data;
 }
 
-// Upload a file. NOTE: we do NOT set Content-Type here — the browser sets the
-// multipart boundary itself. Returns the URL to use for the image.
 async function apiUploadImage(file) {
-  if (USE_FAKE_DATA) return URL.createObjectURL(file); // local-only preview
+  if (USE_FAKE_DATA) return URL.createObjectURL(file);
   const form = new FormData();
-  form.append("image", file);
-  const res = await fetch("/api/media", { method: "POST", body: form });
+  form.append('image', file);
+  const res = await fetch('/api/media', { method: 'POST', body: form });
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((data && data.error) || "Upload failed");
+  if (!res.ok) throw new Error((data && data.error) || 'Upload failed');
   return data.url;
 }
 
-// ---- Auth ----
-async function apiGetCurrentUser() {
-  if (USE_FAKE_DATA) return FAKE_USER;
-  return (await fetchJson("/api/auth/me")).user;
-}
-async function apiSignup(username, password) {
-  if (USE_FAKE_DATA) return FAKE_USER;
-  return (await fetchJson("/api/auth/signup", { method: "POST", body: JSON.stringify({ username, password }) })).user;
-}
-async function apiLogin(username, password) {
-  if (USE_FAKE_DATA) return FAKE_USER;
-  return (await fetchJson("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) })).user;
-}
-async function apiLogout() {
-  if (USE_FAKE_DATA) return;
-  await fetchJson("/api/auth/logout", { method: "POST" });
-}
-// Save the full profile + appearance (Settings sends every field).
-async function apiUpdateProfile(fields) {
-  if (USE_FAKE_DATA) { FAKE_USER = { ...FAKE_USER, ...fields }; return FAKE_USER; }
-  return (await fetchJson("/api/users/me", { method: "PUT", body: JSON.stringify(fields) })).user;
-}
+async function apiGetCurrentUser() { if (USE_FAKE_DATA) return FAKE_USER; return (await fetchJson('/api/auth/me')).user; }
+async function apiSignup(u, p) { if (USE_FAKE_DATA) return FAKE_USER; return (await fetchJson('/api/auth/signup', { method: 'POST', body: JSON.stringify({ username: u, password: p }) })).user; }
+async function apiLogin(u, p) { if (USE_FAKE_DATA) return FAKE_USER; return (await fetchJson('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: u, password: p }) })).user; }
+async function apiLogout() { if (USE_FAKE_DATA) return; await fetchJson('/api/auth/logout', { method: 'POST' }); }
+async function apiUpdateProfile(fields) { if (USE_FAKE_DATA) { FAKE_USER = { ...FAKE_USER, ...fields }; return FAKE_USER; } return (await fetchJson('/api/users/me', { method: 'PUT', body: JSON.stringify(fields) })).user; }
 
-// ---- Posts / feed ----
-async function apiGetFeed() {
-  if (USE_FAKE_DATA) return [...FAKE_TWEETS];
-  return await fetchJson("/api/posts");
-}
+async function apiGetFeed() { if (USE_FAKE_DATA) return [...FAKE_TWEETS]; return await fetchJson('/api/posts'); }
 async function apiGetProfile(username) {
   if (USE_FAKE_DATA) {
     const posts = FAKE_TWEETS.filter((t) => t.username === username);
-    const user = username === FAKE_USER.username ? FAKE_USER
-      : { username, display_name: posts[0] && posts[0].display_name, avatar_url: null, banner_url: null, bio: null, created_at: FAKE_USER.created_at };
+    const user = username === FAKE_USER.username ? FAKE_USER : { username, display_name: username, avatar_url: null, banner_url: null, bio: null, created_at: FAKE_USER.created_at };
     return { user, posts };
   }
-  return await fetchJson("/api/users/" + encodeURIComponent(username));
+  return await fetchJson('/api/users/' + encodeURIComponent(username));
 }
 async function apiCreatePost(content, imageUrl) {
-  if (USE_FAKE_DATA) {
-    const p = { id: Date.now(), username: FAKE_USER.username, display_name: FAKE_USER.display_name,
-      avatar_url: FAKE_USER.avatar_url, avatar_anim: FAKE_USER.avatar_anim,
-      content, image_url: imageUrl || null, created_at: new Date().toISOString(),
-      like_count: 0, comment_count: 0, retweet_count: 0, liked_by_me: false, retweeted_by_me: false, retweeted_by: null };
-    FAKE_TWEETS = [p, ...FAKE_TWEETS];
-    return p;
-  }
-  return await fetchJson("/api/posts", { method: "POST", body: JSON.stringify({ content, image_url: imageUrl }) });
+  if (USE_FAKE_DATA) { const p = { id: Date.now(), username: FAKE_USER.username, display_name: FAKE_USER.display_name, avatar_url: FAKE_USER.avatar_url, content, image_url: imageUrl || null, created_at: new Date().toISOString(), like_count: 0, comment_count: 0, retweet_count: 0, liked_by_me: false, retweeted_by_me: false, retweeted_by: null }; FAKE_TWEETS = [p, ...FAKE_TWEETS]; return p; }
+  return await fetchJson('/api/posts', { method: 'POST', body: JSON.stringify({ content, image_url: imageUrl }) });
 }
-async function apiDeletePost(id) {
-  if (USE_FAKE_DATA) { FAKE_TWEETS = FAKE_TWEETS.filter((t) => t.id !== id); return; }
-  await fetchJson("/api/posts/" + id, { method: "DELETE" });
-}
+async function apiDeletePost(id) { if (USE_FAKE_DATA) { FAKE_TWEETS = FAKE_TWEETS.filter((t) => t.id !== id); return; } await fetchJson('/api/posts/' + id, { method: 'DELETE' }); }
 
-// ---- Likes / retweets ----
-async function apiLike(id) { if (USE_FAKE_DATA) return toggleFake(id, "liked_by_me", "like_count", true); await fetchJson("/api/posts/" + id + "/like", { method: "POST" }); }
-async function apiUnlike(id) { if (USE_FAKE_DATA) return toggleFake(id, "liked_by_me", "like_count", false); await fetchJson("/api/posts/" + id + "/like", { method: "DELETE" }); }
-async function apiRetweet(id) { if (USE_FAKE_DATA) return toggleFake(id, "retweeted_by_me", "retweet_count", true); await fetchJson("/api/posts/" + id + "/retweet", { method: "POST" }); }
-async function apiUnretweet(id) { if (USE_FAKE_DATA) return toggleFake(id, "retweeted_by_me", "retweet_count", false); await fetchJson("/api/posts/" + id + "/retweet", { method: "DELETE" }); }
-function toggleFake(id, flag, count, on) {
-  FAKE_TWEETS = FAKE_TWEETS.map((t) => (t.id === id ? { ...t, [flag]: on, [count]: t[count] + (on ? 1 : -1) } : t));
-}
+function fakeToggle(id, flag, count, on) { FAKE_TWEETS = FAKE_TWEETS.map((t) => (t.id === id ? { ...t, [flag]: on, [count]: t[count] + (on ? 1 : -1) } : t)); }
+async function apiLike(id) { if (USE_FAKE_DATA) return fakeToggle(id, 'liked_by_me', 'like_count', true); await fetchJson('/api/posts/' + id + '/like', { method: 'POST' }); }
+async function apiUnlike(id) { if (USE_FAKE_DATA) return fakeToggle(id, 'liked_by_me', 'like_count', false); await fetchJson('/api/posts/' + id + '/like', { method: 'DELETE' }); }
+async function apiRetweet(id) { if (USE_FAKE_DATA) return fakeToggle(id, 'retweeted_by_me', 'retweet_count', true); await fetchJson('/api/posts/' + id + '/retweet', { method: 'POST' }); }
+async function apiUnretweet(id) { if (USE_FAKE_DATA) return fakeToggle(id, 'retweeted_by_me', 'retweet_count', false); await fetchJson('/api/posts/' + id + '/retweet', { method: 'DELETE' }); }
 
-// ---- Comments ----
-async function apiGetComments(postId) {
-  if (USE_FAKE_DATA) return [...(FAKE_COMMENTS[postId] || [])];
-  return await fetchJson("/api/posts/" + postId + "/comments");
-}
+async function apiGetComments(postId) { if (USE_FAKE_DATA) return [...(FAKE_COMMENTS[postId] || [])]; return await fetchJson('/api/posts/' + postId + '/comments'); }
 async function apiAddComment(postId, content) {
-  if (USE_FAKE_DATA) {
-    const c = { id: Date.now(), username: FAKE_USER.username, display_name: FAKE_USER.display_name, avatar_url: FAKE_USER.avatar_url, avatar_anim: FAKE_USER.avatar_anim, content, created_at: new Date().toISOString() };
-    FAKE_COMMENTS[postId] = [...(FAKE_COMMENTS[postId] || []), c];
-    FAKE_TWEETS = FAKE_TWEETS.map((t) => (t.id === postId ? { ...t, comment_count: (FAKE_COMMENTS[postId] || []).length } : t));
-    return c;
-  }
-  return await fetchJson("/api/posts/" + postId + "/comments", { method: "POST", body: JSON.stringify({ content }) });
+  if (USE_FAKE_DATA) { const c = { id: Date.now(), username: FAKE_USER.username, display_name: FAKE_USER.display_name, avatar_url: FAKE_USER.avatar_url, content, created_at: new Date().toISOString() }; FAKE_COMMENTS[postId] = [...(FAKE_COMMENTS[postId] || []), c]; return c; }
+  return await fetchJson('/api/posts/' + postId + '/comments', { method: 'POST', body: JSON.stringify({ content }) });
 }
-async function apiDeleteComment(postId, commentId) {
-  if (USE_FAKE_DATA) {
-    FAKE_COMMENTS[postId] = (FAKE_COMMENTS[postId] || []).filter((c) => c.id !== commentId);
-    FAKE_TWEETS = FAKE_TWEETS.map((t) => (t.id === postId ? { ...t, comment_count: (FAKE_COMMENTS[postId] || []).length } : t));
-    return;
-  }
-  await fetchJson("/api/posts/" + postId + "/comments/" + commentId, { method: "DELETE" });
-}
+async function apiDeleteComment(postId, commentId) { if (USE_FAKE_DATA) { FAKE_COMMENTS[postId] = (FAKE_COMMENTS[postId] || []).filter((c) => c.id !== commentId); return; } await fetchJson('/api/posts/' + postId + '/comments/' + commentId, { method: 'DELETE' }); }
 
-// ---- Sports (World Cup 2026) ----
-async function apiGetSports(which) {
-  if (USE_FAKE_DATA) {
-    return which === "standings"
-      ? { configured: true, groups: SAMPLE_STANDINGS }
-      : { configured: true, matches: SAMPLE_MATCHES };
-  }
-  return await fetchJson("/api/sports/" + which);
-}
+async function apiGetSports(which) { if (USE_FAKE_DATA) return { configured: true, matches: FAKE_SPORTS.matches, groups: FAKE_SPORTS.groups }; return await fetchJson('/api/sports/' + which); }
 
 // ===========================================================================
-// PART 3 — COMPONENTS
+// PART 3 — helpers, components, screens, controller
 // ===========================================================================
 
-// The animated avatar "mascots" you can pick in Settings (key -> emoji).
-const MASCOTS = { bird: "🐦", fox: "🦊", alien: "👾", star: "🌟", ghost: "👻" };
-const THEMES = [
-  { key: "neon", label: "Neon" },
-  { key: "sunset", label: "Sunset" },
-  { key: "matrix", label: "Matrix" },
-  { key: "bubblegum", label: "Bubblegum" },
-];
-const EFFECTS = [
-  { key: "none", label: "None" },
-  { key: "aurora", label: "Aurora" },
-  { key: "particles", label: "Particles" },
-  { key: "stars", label: "Stars" },
-];
-
+function avatarGradient(seed) {
+  seed = seed || '?';
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
+  return `linear-gradient(135deg, hsl(${h} 72% 56%), hsl(${(h + 56) % 360} 70% 48%))`;
+}
+function initials(name) {
+  return (name || '?').replace(/[^a-zA-Z ]/g, '').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+}
 function timeAgo(iso) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "now";
-  const m = Math.floor(s / 60);
-  if (m < 60) return m + "m";
-  const h = Math.floor(m / 60);
-  if (h < 24) return h + "h";
-  return Math.floor(h / 24) + "d";
+  if (s < 60) return 'now';
+  const m = Math.floor(s / 60); if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60); if (h < 24) return h + 'h';
+  return Math.floor(h / 24) + 'd';
 }
-function shownName(user) {
-  return (user && user.display_name) || (user && user.username) || "?";
+function fmt(n) { n = n || 0; if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace('.0', '') + 'K'; return String(n); }
+
+// ---- Icons (stroke, currentColor) ----
+const PATHS = {
+  home: 'M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+  bell: 'M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Zm3.5 9a2.5 2.5 0 0 0 5 0',
+  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm6 13 4 4',
+  feather: 'M20 4C12 4 6 9 6 16l-2 4 4-2c7 0 12-6 12-14ZM6 16l8-8',
+  reply: 'M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5Z',
+  rt: 'M4 9l3-3 3 3M7 6v8a3 3 0 0 0 3 3h7m3-5-3 3-3-3m3 3V8a3 3 0 0 0-3-3H7',
+  heart: 'M12 20s-7-4.4-9.3-8.4A4.6 4.6 0 0 1 12 6a4.6 4.6 0 0 1 9.3 5.6C19 15.6 12 20 12 20Z',
+  share: 'M12 16V4m0 0 4 4m-4-4-4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  back: 'M15 5l-7 7 7 7',
+  cal: 'M5 5h14v15H5zM5 9h14M9 3v4M15 3v4',
+  image: 'M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5',
+  trophy: 'M7 4h10v4a5 5 0 0 1-10 0V4ZM5 5H3v2a3 3 0 0 0 3 3M19 5h2v2a3 3 0 0 1-3 3M9 14h6M12 14v4m-3 2h6',
+  settings: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm8 3a8 8 0 0 0-.2-1.7l2-1.6-2-3.4-2.3 1a8 8 0 0 0-3-1.7L14 2h-4l-.5 2.6a8 8 0 0 0-3 1.7l-2.3-1-2 3.4 2 1.6A8 8 0 0 0 4 12c0 .6.1 1.1.2 1.7l-2 1.6 2 3.4 2.3-1a8 8 0 0 0 3 1.7L10 22h4l.5-2.6a8 8 0 0 0 3-1.7l2.3 1 2-3.4-2-1.6c.1-.6.2-1.1.2-1.7Z',
+  logout: 'M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4m7 14 5-5-5-5m5 5H9',
+};
+function Icon({ name, className = 'ico', fill }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill={fill ? 'currentColor' : 'none'} stroke="currentColor"
+      strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={PATHS[name]} />
+    </svg>
+  );
 }
 
-// ---- Avatar ----
-// Priority: uploaded photo (avatar_url) > animated mascot (avatar_anim) >
-// a gradient circle with the first initial.
-function avatarGradient(name) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  const h1 = Math.abs(hash) % 360;
-  return `linear-gradient(135deg, hsl(${h1} 85% 60%), hsl(${(h1 + 60) % 360} 85% 50%))`;
-}
-function Avatar({ user, name, size = 44, onClick }) {
-  const u = user || { username: name };
-  const label = u.username || name || "?";
-  const cls = "avatar" + (onClick ? " clickable" : "");
-  const box = { width: size, height: size };
-
+// ---- Avatar (uploaded photo → gradient + initials) ----
+function Avatar({ user, handle, size }) {
+  const u = user || { username: handle, display_name: handle };
+  const seed = u.username || handle || '?';
+  const name = u.display_name || u.username || handle || '?';
+  const style = size ? { width: size, height: size, fontSize: size * 0.4 } : {};
   if (u.avatar_url) {
-    return <img className={cls} src={u.avatar_url} alt="" onClick={onClick}
-      style={{ ...box, objectFit: "cover" }} />;
+    return <img className="avatar" src={u.avatar_url} alt="" style={{ ...style, objectFit: 'cover' }} />;
   }
-  if (u.avatar_anim && MASCOTS[u.avatar_anim]) {
-    return (
-      <div className={cls + " avatar-mascot"} onClick={onClick}
-        style={{ ...box, fontSize: size * 0.55, background: avatarGradient(label) }}>
-        <span className="mascot-emoji">{MASCOTS[u.avatar_anim]}</span>
-      </div>
-    );
-  }
-  return (
-    <div className={cls} onClick={onClick}
-      style={{ ...box, fontSize: size * 0.42, background: avatarGradient(label) }}>
-      {label.charAt(0).toUpperCase()}
-    </div>
-  );
+  return <div className="avatar" style={{ ...style, background: avatarGradient(seed) }}>{initials(name)}</div>;
 }
 
-// ---- AuthForm ----
-function AuthForm({ onAuthed }) {
-  const [mode, setMode] = useState("login");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError(""); setBusy(true);
-    try {
-      const user = mode === "login" ? await apiLogin(username, password) : await apiSignup(username, password);
-      onAuthed(user);
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
-  }
-  return (
-    <div className="card">
-      <div className="auth-tabs">
-        <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Log in</button>
-        <button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Sign up</button>
-      </div>
-      <form onSubmit={handleSubmit}>
-        <input className="field" placeholder="username" value={username} autoComplete="username" onChange={(e) => setUsername(e.target.value)} />
-        <input className="field" type="password" placeholder="password" value={password}
-          autoComplete={mode === "login" ? "current-password" : "new-password"} onChange={(e) => setPassword(e.target.value)} />
-        {error && <div className="error">{error}</div>}
-        <button className="btn" type="submit" disabled={busy}>{mode === "login" ? "Log in" : "Create account"}</button>
-      </form>
-    </div>
-  );
-}
-
-// ---- Composer ----
-function Composer({ currentUser, onPosted }) {
-  const [content, setContent] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [showImage, setShowImage] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
-  const MAX = 280;
-  const remaining = MAX - content.length;
-  const isEmpty = content.trim().length === 0;
-  const tooLong = content.length > MAX;
-
-  async function onPickFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setError(""); setUploading(true);
-    try { setImageUrl(await apiUploadImage(file)); }
-    catch (err) { setError(err.message); }
-    finally { setUploading(false); }
-  }
-  async function handlePost() {
-    setError("");
-    try {
-      await apiCreatePost(content, imageUrl.trim() || null);
-      setContent(""); setImageUrl(""); setShowImage(false);
-      onPosted();
-    } catch (err) { setError(err.message); }
-  }
-
-  return (
-    <div className="card composer">
-      <div className="row">
-        <Avatar user={currentUser} />
-        <div className="row-main">
-          <textarea placeholder="What's happening?" value={content} maxLength={MAX + 20} onChange={(e) => setContent(e.target.value)} />
-          {showImage && (
-            <div className="image-tools">
-              <label className="btn-ghost btn-sm upload-label">
-                {uploading ? "Uploading…" : "📎 Upload"}
-                <input type="file" accept="image/*" onChange={onPickFile} hidden />
-              </label>
-              <input className="image-input" placeholder="…or paste an image URL" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
-            </div>
-          )}
-          {showImage && imageUrl.trim() && (
-            <img className="image-preview" src={imageUrl} alt="preview" onError={(e) => (e.target.style.display = "none")} onLoad={(e) => (e.target.style.display = "block")} />
-          )}
-          {error && <div className="error">{error}</div>}
-          <div className="composer-footer">
-            <button className="icon-btn" title="Add an image" onClick={() => setShowImage((s) => !s)}>🖼️</button>
-            <span className="spacer"></span>
-            <span className={"char-count" + (tooLong ? " over" : "")}>{remaining}</span>
-            <button className="btn" onClick={handlePost} disabled={isEmpty || tooLong || uploading}>Post</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---- CommentThread ----
-function CommentThread({ postId, currentUser, onCountChanged }) {
-  const [comments, setComments] = useState(null);
-  const [text, setText] = useState("");
-  async function load() { try { setComments(await apiGetComments(postId)); } catch (e) { console.error(e); } }
-  useEffect(() => { load(); }, [postId]);
-
-  async function add(e) {
-    e.preventDefault();
-    if (!text.trim()) return;
-    try { await apiAddComment(postId, text.trim()); setText(""); await load(); onCountChanged(); }
-    catch (err) { alert(err.message); }
-  }
-  async function remove(id) {
-    try { await apiDeleteComment(postId, id); await load(); onCountChanged(); }
-    catch (err) { alert(err.message); }
-  }
-  return (
-    <div className="comments">
-      {currentUser && (
-        <form className="comment-form" onSubmit={add}>
-          <Avatar user={currentUser} size={30} />
-          <input className="comment-input" placeholder="Write a reply…" value={text} maxLength={280} onChange={(e) => setText(e.target.value)} />
-          <button className="btn btn-sm" type="submit" disabled={!text.trim()}>Reply</button>
-        </form>
-      )}
-      {comments === null ? (
-        <div className="muted comment-loading">Loading replies…</div>
-      ) : comments.length === 0 ? (
-        <div className="muted comment-loading">No replies yet.</div>
-      ) : (
-        comments.map((c) => (
-          <div className="comment" key={c.id}>
-            <Avatar user={c} size={30} />
-            <div className="comment-body">
-              <span className="comment-name">{c.display_name || c.username}</span>
-              <span className="comment-handle">@{c.username} · {timeAgo(c.created_at)}</span>
-              {currentUser && currentUser.username === c.username && (
-                <button className="comment-delete" title="Delete reply" onClick={() => remove(c.id)}>×</button>
-              )}
-              <div className="comment-text">{c.content}</div>
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
-
-// ---- Tweet ----
-function Tweet({ tweet, currentUser, onChanged, onOpenProfile }) {
-  const [showComments, setShowComments] = useState(false);
+// ---- Tweet card ----
+function Tweet({ tweet, currentUser, isCard, onOpen, onLike, onRt, onDelete, onShare, onOpenProfile }) {
+  const name = tweet.display_name || tweet.username;
   const isMine = currentUser && currentUser.username === tweet.username;
-
-  async function toggleLike() {
-    try { tweet.liked_by_me ? await apiUnlike(tweet.id) : await apiLike(tweet.id); onChanged(); }
-    catch (err) { alert(err.message); }
-  }
-  async function toggleRetweet() {
-    try { tweet.retweeted_by_me ? await apiUnretweet(tweet.id) : await apiRetweet(tweet.id); onChanged(); }
-    catch (err) { alert(err.message); }
-  }
-  async function handleDelete() {
-    if (!confirm("Delete this tweet?")) return;
-    try { await apiDeletePost(tweet.id); onChanged(); } catch (err) { alert(err.message); }
-  }
-
+  const stop = (e, fn) => { e.stopPropagation(); fn && fn(); };
   return (
-    <div className="card">
-      {tweet.retweeted_by && (
-        <div className="retweet-label" onClick={() => onOpenProfile(tweet.retweeted_by)}>🔁 @{tweet.retweeted_by} retweeted</div>
-      )}
-      <div className="row">
-        <Avatar user={tweet} onClick={() => onOpenProfile(tweet.username)} />
-        <div className="row-main">
-          <div className="tweet-head">
-            <span className="tweet-name" onClick={() => onOpenProfile(tweet.username)}>{shownName(tweet)}</span>
-            <span className="tweet-handle" onClick={() => onOpenProfile(tweet.username)}>@{tweet.username}</span>
-            <span className="tweet-time">· {timeAgo(tweet.created_at)}</span>
-            <span className="spacer"></span>
-            {isMine && <button className="delete-btn" title="Delete" onClick={handleDelete}>×</button>}
+    <article className={'tweet' + (isCard ? ' is-card' : '')} onClick={() => onOpen && onOpen(tweet)}>
+      <div onClick={(e) => stop(e, () => onOpenProfile(tweet.username))} style={{ alignSelf: 'flex-start' }}>
+        <Avatar user={tweet} />
+      </div>
+      <div className="tweet-main">
+        <div className="tweet-head">
+          <span className="name" onClick={(e) => stop(e, () => onOpenProfile(tweet.username))}>{name}</span>
+          <span className="handle">@{tweet.username}</span>
+          <span className="dot">·</span>
+          <span className="time">{timeAgo(tweet.created_at)}</span>
+          {isMine && <button className="iconbtn more" title="Delete tweet" onClick={(e) => stop(e, () => onDelete(tweet.id))}><Icon name="more" /></button>}
+        </div>
+        <p className="tweet-text">{tweet.content}</p>
+        {tweet.image_url && (
+          <div className="media bare">
+            <img src={tweet.image_url} alt="" onError={(e) => { const m = e.target.closest('.media'); if (m) m.style.display = 'none'; }} />
           </div>
-          <div className="tweet-content">{tweet.content}</div>
-          {tweet.image_url && <img className="tweet-image" src={tweet.image_url} alt="" onError={(e) => (e.target.style.display = "none")} />}
-          <div className="tweet-actions">
-            <button className="action-btn" title="Reply" onClick={() => setShowComments((s) => !s)}>💬 {tweet.comment_count}</button>
-            <button className={"action-btn retweet" + (tweet.retweeted_by_me ? " on" : "")} title="Retweet" onClick={toggleRetweet}>🔁 {tweet.retweet_count}</button>
-            <button className={"action-btn like" + (tweet.liked_by_me ? " on" : "")} title="Like" onClick={toggleLike}>{tweet.liked_by_me ? "♥" : "♡"} {tweet.like_count}</button>
-          </div>
-          {showComments && <CommentThread postId={tweet.id} currentUser={currentUser} onCountChanged={onChanged} />}
+        )}
+        <div className="actions">
+          <button className="act reply" onClick={(e) => stop(e, () => onOpen(tweet))}><span className="ico-wrap"><Icon name="reply" /></span>{fmt(tweet.comment_count)}</button>
+          <button className="act rt" data-on={tweet.retweeted_by_me ? '1' : '0'} onClick={(e) => stop(e, () => onRt(tweet))}><span className="ico-wrap"><Icon name="rt" /></span>{fmt(tweet.retweet_count)}</button>
+          <button className="act like" data-on={tweet.liked_by_me ? '1' : '0'} onClick={(e) => stop(e, () => onLike(tweet))}><span className="ico-wrap"><Icon name="heart" fill={tweet.liked_by_me} /></span>{fmt(tweet.like_count)}</button>
+          <button className="act share" onClick={(e) => stop(e, onShare)}><span className="ico-wrap"><Icon name="share" /></span></button>
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 
-// ---- Feed ----
-function Feed({ tweets, currentUser, onChanged, onOpenProfile }) {
-  if (tweets.length === 0) return <div className="empty">No tweets yet. Be the first!</div>;
-  return (
-    <div>
-      {tweets.map((t) => (
-        <Tweet key={(t.retweeted_by || "orig") + "-" + t.id} tweet={t} currentUser={currentUser} onChanged={onChanged} onOpenProfile={onOpenProfile} />
-      ))}
-    </div>
-  );
-}
+// ---- Compose box ----
+function Compose({ currentUser, onPost, placeholder = "What's happening?", replying, autoFocus }) {
+  const [text, setText] = useState('');
+  const [showImg, setShowImg] = useState(false);
+  const [url, setUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState('');
+  const ref = useRef(null);
+  useEffect(() => { if (autoFocus && ref.current) ref.current.focus(); }, [autoFocus]);
 
-// ---- Tabs ----
-function Tabs({ active, onSelect }) {
-  return (
-    <div className="tabs">
-      <button className={"tab" + (active === "feed" ? " active" : "")} onClick={() => onSelect("feed")}>Feed</button>
-      <button className={"tab" + (active === "sports" ? " active" : "")} onClick={() => onSelect("sports")}>⚽ Sports</button>
-    </div>
-  );
-}
+  const left = 280 - text.length, over = left < 0;
+  const pct = Math.min(100, (text.length / 280) * 100);
+  const R = 12, C = 2 * Math.PI * R;
 
-// ---- Sports tab: live World Cup 2026 matches + standings ----
-
-// Sample data used only in fake mode (so the tab demos with no backend/key).
-const SAMPLE_MATCHES = [
-  { id: 1, utcDate: new Date().toISOString(), status: "IN_PLAY", group: "GROUP_A", home: { name: "USA", crest: null }, away: { name: "MEX", crest: null }, homeScore: 1, awayScore: 1 },
-  { id: 2, utcDate: new Date(Date.now() + 3 * 3600 * 1000).toISOString(), status: "TIMED", group: "GROUP_B", home: { name: "BRA", crest: null }, away: { name: "ARG", crest: null }, homeScore: null, awayScore: null },
-  { id: 3, utcDate: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), status: "FINISHED", group: "GROUP_A", home: { name: "CAN", crest: null }, away: { name: "FRA", crest: null }, homeScore: 0, awayScore: 2 },
-];
-const SAMPLE_STANDINGS = [
-  { group: "GROUP_A", stage: "GROUP_STAGE", table: [
-    { position: 1, team: "FRA", crest: null, played: 1, won: 1, draw: 0, lost: 0, gd: 2, points: 3 },
-    { position: 2, team: "USA", crest: null, played: 1, won: 0, draw: 1, lost: 0, gd: 0, points: 1 },
-    { position: 3, team: "MEX", crest: null, played: 1, won: 0, draw: 1, lost: 0, gd: 0, points: 1 },
-    { position: 4, team: "CAN", crest: null, played: 1, won: 0, draw: 0, lost: 1, gd: -2, points: 0 },
-  ] },
-];
-
-function matchStatus(status) {
-  if (status === "IN_PLAY" || status === "PAUSED") return { label: "LIVE", cls: "live" };
-  if (status === "FINISHED") return { label: "FT", cls: "ft" };
-  return { label: "", cls: "upcoming" }; // SCHEDULED / TIMED -> show kickoff time
-}
-
-function MatchRow({ m }) {
-  const s = matchStatus(m.status);
-  const hasScore = m.homeScore !== null && m.awayScore !== null;
-  const time = new Date(m.utcDate).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  return (
-    <div className="match">
-      <div className="match-team home">
-        <span>{m.home.name}</span>
-        {m.home.crest && <img className="crest" src={m.home.crest} alt="" />}
-      </div>
-      <div className="match-mid">
-        {hasScore ? <span className="match-score">{m.homeScore} – {m.awayScore}</span> : <span className="match-vs">vs</span>}
-        <span className={"match-status " + s.cls}>{s.label || time}</span>
-      </div>
-      <div className="match-team away">
-        {m.away.crest && <img className="crest" src={m.away.crest} alt="" />}
-        <span>{m.away.name}</span>
-      </div>
-    </div>
-  );
-}
-
-function MatchSection({ title, items }) {
-  return (
-    <div className="card sports-section">
-      <h3 className="standings-title">{title}</h3>
-      {items.map((m) => <MatchRow key={m.id} m={m} />)}
-    </div>
-  );
-}
-
-function Standings({ groups }) {
-  if (!groups || groups.length === 0) return <div className="empty">No standings available yet.</div>;
-  return (
-    <div>
-      {groups.map((g) => (
-        <div className="card" key={(g.group || g.stage) + ""}>
-          <h3 className="standings-title">{(g.group || g.stage || "Table").replace(/_/g, " ")}</h3>
-          <table className="standings">
-            <thead><tr><th></th><th></th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead>
-            <tbody>
-              {g.table.map((r) => (
-                <tr key={r.position}>
-                  <td className="pos">{r.position}</td>
-                  <td className="team">{r.crest && <img className="crest sm" src={r.crest} alt="" />}{r.team}</td>
-                  <td>{r.played}</td><td>{r.won}</td><td>{r.draw}</td><td>{r.lost}</td><td>{r.gd}</td><td className="pts">{r.points}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SportsTab() {
-  const [sub, setSub] = useState("matches");
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setData(null); setError("");
-    apiGetSports(sub).then(setData).catch((e) => setError(e.message));
-  }, [sub]);
-
-  function renderMatches() {
-    const matches = data.matches || [];
-    if (matches.length === 0) return <div className="empty">No matches found.</div>;
-    const byDate = (a, b) => new Date(a.utcDate) - new Date(b.utcDate);
-    const live = matches.filter((m) => m.status === "IN_PLAY" || m.status === "PAUSED");
-    const upcoming = matches.filter((m) => m.status === "TIMED" || m.status === "SCHEDULED").sort(byDate);
-    const finished = matches.filter((m) => m.status === "FINISHED").sort((a, b) => byDate(b, a));
-    return (
-      <>
-        {live.length > 0 && <MatchSection title="🔴 Live now" items={live} />}
-        {upcoming.length > 0 && <MatchSection title="Upcoming" items={upcoming.slice(0, 15)} />}
-        {finished.length > 0 && <MatchSection title="Results" items={finished.slice(0, 15)} />}
-      </>
-    );
+  async function pick(e) {
+    const f = e.target.files[0]; if (!f) return;
+    setErr(''); setUploading(true);
+    try { setUrl(await apiUploadImage(f)); } catch (x) { setErr(x.message); } finally { setUploading(false); }
+  }
+  function submit() {
+    if (!text.trim() || over) return;
+    onPost({ text: text.trim(), imageUrl: url.trim() || null });
+    setText(''); setUrl(''); setShowImg(false);
   }
 
   return (
-    <div>
-      <div className="sports-header">
-        <h2 className="page-title" style={{ margin: 0 }}>⚽ World Cup 2026</h2>
-        <div className="sports-subtabs">
-          <button className={sub === "matches" ? "active" : ""} onClick={() => setSub("matches")}>Matches</button>
-          <button className={sub === "standings" ? "active" : ""} onClick={() => setSub("standings")}>Standings</button>
+    <div className="compose">
+      <Avatar user={currentUser} />
+      <div className="compose-main">
+        <textarea ref={ref} value={text} placeholder={placeholder} rows={1}
+          onChange={(e) => { setText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} />
+        {showImg && (
+          <input className="compose-url" value={url} placeholder="Paste an image URL…" onChange={(e) => setUrl(e.target.value)} />
+        )}
+        {showImg && url.trim() && (
+          <div className="media bare" style={{ marginTop: 10 }}><img src={url} alt="preview" onError={(e) => { const m = e.target.closest('.media'); if (m) m.style.display = 'none'; }} /></div>
+        )}
+        {err && <div className="form-err">{err}</div>}
+        <div className="compose-foot">
+          <div className="compose-tools">
+            <button className="tool" data-on={showImg ? '1' : '0'} title="Add an image" onClick={() => setShowImg((s) => !s)}><Icon name="image" /></button>
+            <label className="tool upload-label" title="Upload an image">
+              <Icon name="feather" />
+              <input type="file" accept="image/*" hidden onChange={pick} />
+            </label>
+            {uploading && <span className="charcount">↑…</span>}
+          </div>
+          <div className="compose-right">
+            {text.length > 0 && (
+              <div className="charwrap" title={left + ' left'}>
+                <svg width="28" height="28">
+                  <circle cx="14" cy="14" r={R} fill="none" stroke="var(--border)" strokeWidth="2.5" />
+                  <circle cx="14" cy="14" r={R} fill="none" strokeWidth="2.5" strokeLinecap="round" stroke={over ? 'var(--like)' : 'var(--accent)'} strokeDasharray={C} strokeDashoffset={C - (C * pct) / 100} transform="rotate(-90 14 14)" />
+                </svg>
+              </div>
+            )}
+            {text.length > 240 && <span className="charcount" data-warn={over ? '1' : '0'}>{left}</span>}
+            <button className="post-btn" disabled={!text.trim() || over || uploading} onClick={submit}>{replying ? 'Reply' : 'Tweet'}</button>
+          </div>
         </div>
       </div>
-
-      {error ? (
-        <div className="error">{error}</div>
-      ) : !data ? (
-        <div className="empty">Loading live data…</div>
-      ) : data.configured === false ? (
-        <div className="card sports-placeholder">
-          <div className="sports-emoji">🔑</div>
-          <h2>Almost there</h2>
-          <p className="muted">
-            Live World Cup data needs a free API key. Get one at football-data.org, set the{" "}
-            <code>FOOTBALL_DATA_API_KEY</code> environment variable, and redeploy.
-          </p>
-        </div>
-      ) : data.error ? (
-        <div className="error">{data.error}</div>
-      ) : sub === "matches" ? (
-        renderMatches()
-      ) : (
-        <Standings groups={data.groups} />
-      )}
     </div>
   );
 }
 
-// ---- Profile ----
-function Profile({ username, currentUser, onChanged, onOpenProfile, onEdit }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-  useEffect(() => { setData(null); apiGetProfile(username).then(setData).catch((e) => setError(e.message)); }, [username]);
-
-  if (error) return <div className="error">{error}</div>;
-  if (!data) return <div className="empty">Loading…</div>;
-  const isOwn = currentUser && currentUser.username === data.user.username;
-  const bannerStyle = data.user.banner_url ? { backgroundImage: `url(${data.user.banner_url})` } : {};
-
+// ---- Reply (comment) row in tweet detail ----
+function ReplyRow({ c, currentUser, onDelete, onOpenProfile }) {
+  const isMine = currentUser && currentUser.username === c.username;
   return (
-    <div>
-      <div className={"profile-banner" + (data.user.banner_url ? " has-image" : "")} style={bannerStyle}></div>
-      <div className="card profile-card">
-        <div className="profile-top">
-          <div className="profile-avatar-ring"><Avatar user={data.user} size={92} /></div>
-          {isOwn && <button className="btn-ghost" onClick={onEdit}>Edit profile</button>}
+    <div className="reply-row">
+      <div onClick={() => onOpenProfile(c.username)} style={{ cursor: 'pointer', alignSelf: 'flex-start' }}><Avatar user={c} /></div>
+      <div className="reply-main">
+        <div className="tweet-head">
+          <span className="name" onClick={() => onOpenProfile(c.username)} style={{ cursor: 'pointer' }}>{c.display_name || c.username}</span>
+          <span className="handle">@{c.username}</span>
+          <span className="dot">·</span>
+          <span className="time">{timeAgo(c.created_at)}</span>
+          {isMine && <button className="reply-del" title="Delete reply" onClick={() => onDelete(c.id)}>×</button>}
         </div>
-        <h2 className="profile-name">{shownName(data.user)}</h2>
-        <div className="profile-handle">@{data.user.username}</div>
-        {data.user.bio && <p className="profile-bio">{data.user.bio}</p>}
-        <div className="profile-meta">
-          Joined {new Date(data.user.created_at).toLocaleDateString()} · {data.posts.length} post{data.posts.length === 1 ? "" : "s"}
-        </div>
+        <p className="tweet-text">{c.content}</p>
       </div>
-      <Feed tweets={data.posts} currentUser={currentUser} onChanged={onChanged} onOpenProfile={onOpenProfile} />
     </div>
   );
 }
 
-// ---- A row of selectable option chips (used for theme / mascot / effect) ----
-function OptionRow({ options, value, onChange }) {
+// ---- Navigation ----
+const NAV = [
+  { id: 'feed', label: 'Home', icon: 'home' },
+  { id: 'sports', label: 'Sports', icon: 'trophy' },
+  { id: 'profile', label: 'Profile', icon: 'user' },
+  { id: 'settings', label: 'Settings', icon: 'settings' },
+];
+
+function Sidebar({ route, currentUser, go, onCompose, onLogout }) {
   return (
-    <div className="opt-row">
-      {options.map((o) => (
-        <button key={o.key} type="button" className={"opt" + (value === o.key ? " active" : "")} onClick={() => onChange(o.key)}>
-          {o.label}
+    <nav className="sidebar collapsed-labels">
+      <div className="brand">
+        <div className="brand-mark">b</div>
+        <div className="brand-word">boon<b>tweet</b></div>
+      </div>
+      {NAV.map((n) => (
+        <button key={n.id} className="nav-item" data-active={route.name === n.id ? '1' : '0'}
+          onClick={() => go(n.id, n.id === 'profile' ? currentUser.username : null)}>
+          <Icon name={n.icon} /><span className="nav-label">{n.label}</span>
         </button>
       ))}
+      <button className="compose-full" onClick={onCompose}><Icon name="feather" /><span>Tweet</span></button>
+      <button className="nav-item" onClick={onLogout}><Icon name="logout" /><span className="nav-label">Log out</span></button>
+      <button className="side-me" onClick={() => go('profile', currentUser.username)}>
+        <Avatar user={currentUser} size={40} />
+        <div className="nav-label">
+          <div className="nm">{currentUser.display_name || currentUser.username}</div>
+          <div className="hd">@{currentUser.username}</div>
+        </div>
+      </button>
+    </nav>
+  );
+}
+
+function TopNav({ route, currentUser, go }) {
+  return (
+    <div className="topnav">
+      <div className="topnav-bar">
+        <div className="brand">
+          <div className="brand-mark">b</div>
+          <div className="brand-word">boon<b>tweet</b></div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="iconbtn" title="Settings" onClick={() => go('settings')}><Icon name="settings" /></button>
+          <button className="iconbtn" onClick={() => go('profile', currentUser.username)} aria-label="Profile"><Avatar user={currentUser} size={34} /></button>
+        </div>
+      </div>
+      <div className="topnav-tabs">
+        {NAV.filter((n) => n.id !== 'settings').map((n) => (
+          <button key={n.id} className="top-tab" data-active={route.name === n.id ? '1' : '0'}
+            onClick={() => go(n.id, n.id === 'profile' ? currentUser.username : null)}>{n.label}</button>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ---- Settings (profile + appearance) ----
-function Settings({ currentUser, onSaved }) {
-  const [displayName, setDisplayName] = useState(currentUser.display_name || "");
-  const [bio, setBio] = useState(currentUser.bio || "");
-  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar_url || "");
-  const [bannerUrl, setBannerUrl] = useState(currentUser.banner_url || "");
-  const [theme, setTheme] = useState(currentUser.theme || "neon");
-  const [avatarAnim, setAvatarAnim] = useState(currentUser.avatar_anim || "");
-  const [pageEffect, setPageEffect] = useState(currentUser.page_effect || "none");
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState("");
+function Aside({ go }) {
+  return (
+    <aside className="aside">
+      <div className="search"><Icon name="search" /><input placeholder="Search BoonTweet" /></div>
+      <div className="widget">
+        <h3>Trending</h3>
+        {TRENDS.map((t, i) => (
+          <div className="trend" key={i} onClick={() => go('sports')}>
+            <div className="cat">{t.cat}</div>
+            <div className="tt">{t.tt}</div>
+            <div className="ct">{t.ct}</div>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+// ---- Appearance panel (user-facing theme/layout picker) ----
+function AppearancePanel({ tweaks, onPick, onSet }) {
+  const [open, setOpen] = useState(false);
+  const theme = THEME_BY_ID[tweaks.theme] || THEMES[0];
+  const optRow = (key, opts) => (
+    <div className="cz-row">
+      {opts.map(([v, l]) => (
+        <button key={v} className="cz-opt" data-on={tweaks[key] === v ? '1' : '0'} onClick={() => onSet(key, v)}>{l}</button>
+      ))}
+    </div>
+  );
+  return (
+    <>
+      <button className="cz-fab" title="Customize appearance" onClick={() => setOpen((o) => !o)}>🎨</button>
+      {open && (
+        <div className="cz-panel">
+          <button className="cz-close" onClick={() => setOpen(false)} aria-label="Close">✕</button>
+          <h4>Customize</h4>
+          <div className="cz-blurb">{theme.blurb}</div>
+
+          <div className="cz-sect">Theme</div>
+          <div className="cz-row">
+            {THEMES.map((t) => (
+              <button key={t.id} className="cz-opt" data-on={tweaks.theme === t.id ? '1' : '0'} onClick={() => onPick(t.id)}>{t.name}</button>
+            ))}
+          </div>
+
+          <div className="cz-sect">Accent</div>
+          <div className="cz-swatches">
+            {theme.accents.map((c) => (
+              <button key={c} className="cz-swatch" data-on={tweaks.accent === c ? '1' : '0'} style={{ background: c }} onClick={() => onSet('accent', c)} aria-label={c} />
+            ))}
+          </div>
+
+          <div className="cz-sect">Font</div>
+          <select className="cz-select" value={tweaks.font} onChange={(e) => onSet('font', e.target.value)}>
+            {FONTS.map((f) => <option key={f.label} value={f.value}>{f.label}</option>)}
+          </select>
+
+          <div className="cz-sect">Navigation</div>
+          {optRow('nav', [['sidebar', 'Sidebar'], ['tabs', 'Top tabs']])}
+          <div className="cz-sect">Cards</div>
+          {optRow('cards', [['rows', 'Rows'], ['bordered', 'Bordered'], ['glassy', 'Glassy'], ['flat', 'Flat']])}
+          <div className="cz-sect">Density</div>
+          {optRow('density', [['compact', 'Compact'], ['regular', 'Regular'], ['spacious', 'Spacious']])}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---- Screens ----
+function FeedScreen({ posts, currentUser, cards, onPost, handlers, go }) {
+  return (
+    <div className="feed-col">
+      <div className="col-head"><div><h1>Home</h1></div></div>
+      <div className={'feed-list' + (cards ? ' cards' : '')}>
+        <Compose currentUser={currentUser} onPost={onPost} />
+        {posts.map((t) => (
+          <React.Fragment key={(t.retweeted_by || 'orig') + '-' + t.id}>
+            {t.retweeted_by && (
+              <div className="retweet-tag" style={{ paddingTop: 'var(--pad)' }}><Icon name="rt" /> {t.retweeted_by} retweeted</div>
+            )}
+            <Tweet tweet={t} currentUser={currentUser} isCard={cards} onOpenProfile={(h) => go('profile', h)} {...handlers} />
+          </React.Fragment>
+        ))}
+        {posts.length === 0 && <div className="empty">No tweets yet — post the first ✦</div>}
+      </div>
+    </div>
+  );
+}
+
+function TweetDetailScreen({ tweet: initial, currentUser, cards, onBack, onChanged, go }) {
+  const [tw, setTw] = useState(initial);
+  const [comments, setComments] = useState(null);
+  useEffect(() => { setTw(initial); }, [initial.id]);
+
+  async function loadComments() { try { setComments(await apiGetComments(tw.id)); } catch (e) { console.error(e); } }
+  useEffect(() => { loadComments(); }, [tw.id]);
+
+  async function like() {
+    const on = !tw.liked_by_me;
+    setTw((p) => ({ ...p, liked_by_me: on, like_count: p.like_count + (on ? 1 : -1) }));
+    try { on ? await apiLike(tw.id) : await apiUnlike(tw.id); } catch (e) { alert(e.message); }
+    onChanged && onChanged();
+  }
+  async function rt() {
+    const on = !tw.retweeted_by_me;
+    setTw((p) => ({ ...p, retweeted_by_me: on, retweet_count: p.retweet_count + (on ? 1 : -1) }));
+    try { on ? await apiRetweet(tw.id) : await apiUnretweet(tw.id); } catch (e) { alert(e.message); }
+    onChanged && onChanged();
+  }
+  async function postReply({ text }) {
+    try { await apiAddComment(tw.id, text); } catch (e) { alert(e.message); return; }
+    setTw((p) => ({ ...p, comment_count: (p.comment_count || 0) + 1 }));
+    await loadComments(); onChanged && onChanged();
+  }
+  async function delReply(id) {
+    try { await apiDeleteComment(tw.id, id); } catch (e) { alert(e.message); return; }
+    setTw((p) => ({ ...p, comment_count: Math.max(0, (p.comment_count || 1) - 1) }));
+    await loadComments(); onChanged && onChanged();
+  }
+
+  const name = tw.display_name || tw.username;
+  return (
+    <div className="feed-col">
+      <div className="col-head">
+        <button className="iconbtn back-btn" onClick={onBack} aria-label="Back"><Icon name="back" /></button>
+        <div><h1>Tweet</h1></div>
+      </div>
+      <div className="detail-tweet">
+        <div className="head-row">
+          <div onClick={() => go('profile', tw.username)} style={{ cursor: 'pointer' }}><Avatar user={tw} size={48} /></div>
+          <div style={{ flex: 1 }}>
+            <div className="name" onClick={() => go('profile', tw.username)} style={{ cursor: 'pointer' }}>{name}</div>
+            <div className="handle">@{tw.username}</div>
+          </div>
+        </div>
+        <p className="detail-text">{tw.content}</p>
+        {tw.image_url && <div className="media bare" style={{ marginTop: 16 }}><img src={tw.image_url} alt="" onError={(e) => { const m = e.target.closest('.media'); if (m) m.style.display = 'none'; }} /></div>}
+        <div className="detail-meta">
+          <span><b>{new Date(tw.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric', year: 'numeric' })}</b></span>
+          <span><b>{fmt(tw.retweet_count)}</b> Retweets</span>
+          <span><b>{fmt(tw.like_count)}</b> Likes</span>
+        </div>
+        <div className="detail-actions">
+          <button className="act reply"><span className="ico-wrap"><Icon name="reply" /></span></button>
+          <button className="act rt" data-on={tw.retweeted_by_me ? '1' : '0'} onClick={rt}><span className="ico-wrap"><Icon name="rt" /></span></button>
+          <button className="act like" data-on={tw.liked_by_me ? '1' : '0'} onClick={like}><span className="ico-wrap"><Icon name="heart" fill={tw.liked_by_me} /></span></button>
+          <button className="act share"><span className="ico-wrap"><Icon name="share" /></span></button>
+        </div>
+      </div>
+      <Compose key={tw.id} currentUser={currentUser} onPost={postReply} placeholder="Tweet your reply…" replying autoFocus />
+      <div className="replies-head">{comments ? comments.length : 0} {comments && comments.length === 1 ? 'reply' : 'replies'}</div>
+      <div className="feed-list">
+        {comments === null ? <div className="empty">Loading replies…</div>
+          : comments.length === 0 ? <div className="empty">No replies yet — be the first.</div>
+            : comments.map((c) => <ReplyRow key={c.id} c={c} currentUser={currentUser} onDelete={delReply} onOpenProfile={(h) => go('profile', h)} />)}
+      </div>
+    </div>
+  );
+}
+
+function ProfileScreen({ username, currentUser, cards, handlers, go }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  const [tab, setTab] = useState('tweets');
+  async function load() { try { setData(await apiGetProfile(username)); } catch (e) { setErr(e.message); } }
+  useEffect(() => { setData(null); setErr(''); setTab('tweets'); load(); }, [username]);
+
+  const localHandlers = { ...handlers, onOpenProfile: (h) => go('profile', h) };
+
+  if (err) return <div className="feed-col"><div className="col-head"><button className="iconbtn back-btn" onClick={() => go('feed')}><Icon name="back" /></button><h1>Profile</h1></div><div className="empty">{err}</div></div>;
+  if (!data) return <div className="feed-col"><div className="col-head"><h1>Profile</h1></div><div className="empty">Loading…</div></div>;
+
+  const u = data.user;
+  const isMe = currentUser && currentUser.username === u.username;
+  const name = u.display_name || u.username;
+  const bannerStyle = u.banner_url
+    ? { backgroundImage: `url(${u.banner_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : { background: 'linear-gradient(120deg, var(--accent), var(--accent-2) 60%, var(--accent))' };
+
+  return (
+    <div className="feed-col">
+      <div className="col-head">
+        <button className="iconbtn back-btn" onClick={() => go('feed')} aria-label="Back"><Icon name="back" /></button>
+        <div><h1>{name}</h1><div className="sub">{data.posts.length} posts</div></div>
+      </div>
+      <div className="banner" style={bannerStyle}></div>
+      <div className="profile-bar">
+        <div className="profile-avatar"><Avatar user={u} size={104} /></div>
+        {isMe && <button className="edit-btn" onClick={() => go('settings')}>Edit profile</button>}
+      </div>
+      <div className="profile-info">
+        <div className="nm">{name}</div>
+        <div className="hd">@{u.username}</div>
+        {u.bio && <p className="bio">{u.bio}</p>}
+        <div className="meta"><span><Icon name="cal" /> Joined {new Date(u.created_at).toLocaleDateString([], { month: 'long', year: 'numeric' })}</span></div>
+      </div>
+      <div className="profile-tabs">
+        <button className="p-tab" data-active={tab === 'tweets' ? '1' : '0'} onClick={() => setTab('tweets')}>Tweets</button>
+        <button className="p-tab" data-active={tab === 'likes' ? '1' : '0'} onClick={() => setTab('likes')}>Likes</button>
+      </div>
+      <div className={'feed-list' + (cards ? ' cards' : '')}>
+        {tab === 'likes' ? (
+          <div className="empty"><div className="big">♥</div>Liked tweets are private for now.</div>
+        ) : data.posts.length ? (
+          data.posts.map((t) => (
+            <React.Fragment key={(t.retweeted_by || 'orig') + '-' + t.id}>
+              {t.retweeted_by && <div className="retweet-tag" style={{ paddingTop: 'var(--pad)' }}><Icon name="rt" /> {t.retweeted_by} retweeted</div>}
+              <Tweet tweet={t} currentUser={currentUser} isCard={cards} {...localHandlers} onLike={(tw) => handlers.onLike(tw, load)} onRt={(tw) => handlers.onRt(tw, load)} onDelete={(id) => handlers.onDelete(id, load)} />
+            </React.Fragment>
+          ))
+        ) : (
+          <div className="empty"><div className="big">🪶</div>Nothing here yet.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Match({ m }) {
+  const cls = m.status === 'IN_PLAY' || m.status === 'PAUSED' ? 'live' : m.status === 'FINISHED' ? 'ft' : 'up';
+  const hasScore = m.homeScore != null && m.awayScore != null;
+  const aWin = hasScore && m.homeScore > m.awayScore;
+  const bWin = hasScore && m.awayScore > m.homeScore;
+  const time = new Date(m.utcDate).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const crest = (t) => t.crest ? <img className="crest" src={t.crest} alt="" /> : <span className="flag">⚽</span>;
+  return (
+    <div className="match">
+      <div className="match-top">
+        <span>{(m.group || m.stage || '').replace(/_/g, ' ')}</span>
+        <span className={'match-status ' + cls}>
+          {cls === 'live' && <span className="live-dot"></span>}
+          {cls === 'live' ? 'LIVE' : cls === 'ft' ? 'FULL TIME' : time}
+        </span>
+      </div>
+      <div className="team-row">
+        {crest(m.home)}
+        <span className={'tname' + (aWin ? ' win' : '')}>{m.home.name}</span>
+        <span className={'score' + (m.homeScore == null ? ' dim' : '')}>{m.homeScore == null ? '–' : m.homeScore}</span>
+      </div>
+      <div className="team-row">
+        {crest(m.away)}
+        <span className={'tname' + (bWin ? ' win' : '')}>{m.away.name}</span>
+        <span className={'score' + (m.awayScore == null ? ' dim' : '')}>{m.awayScore == null ? '–' : m.awayScore}</span>
+      </div>
+    </div>
+  );
+}
+
+function StandingsTable({ group }) {
+  return (
+    <>
+      <div className="section-label">{(group.group || group.stage || 'Table').replace(/_/g, ' ')}</div>
+      <div className="standings">
+        <table>
+          <thead><tr><th className="team-h" colSpan="2">Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead>
+          <tbody>
+            {group.table.map((r, i) => (
+              <tr key={r.team + i} className={i < 2 ? 'qual' : ''}>
+                <td className="pos">{r.position || i + 1}</td>
+                <td className="team-c">{r.crest ? <img className="crest" src={r.crest} alt="" /> : null}{r.team}</td>
+                <td>{r.played}</td><td>{r.won}</td><td>{r.draw}</td><td>{r.lost}</td>
+                <td>{r.gd > 0 ? '+' : ''}{r.gd}</td><td className="pts">{r.points}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function SportsScreen() {
+  const [seg, setSeg] = useState('matches');
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { setData(null); setErr(''); apiGetSports(seg).then(setData).catch((e) => setErr(e.message)); }, [seg]);
+
+  let body;
+  if (err) body = <div className="empty">{err}</div>;
+  else if (!data) body = <div className="empty">Loading live data…</div>;
+  else if (data.configured === false) body = (
+    <div className="sports-setup">
+      <div className="big">🔑</div>
+      <h3>Almost there</h3>
+      <p className="muted">Live World Cup data needs a free API key. Get one at football-data.org, set <code>FOOTBALL_DATA_API_KEY</code>, and redeploy.</p>
+    </div>
+  );
+  else if (data.error) body = <div className="empty">{data.error}</div>;
+  else if (seg === 'matches') {
+    const ms = data.matches || [];
+    const live = ms.filter((m) => m.status === 'IN_PLAY' || m.status === 'PAUSED');
+    const ft = ms.filter((m) => m.status === 'FINISHED');
+    const up = ms.filter((m) => m.status === 'TIMED' || m.status === 'SCHEDULED');
+    body = (
+      <>
+        {live.length > 0 && <div className="section-label"><span className="live-dot"></span> Live now</div>}
+        {live.map((m) => <Match key={m.id} m={m} />)}
+        {ft.length > 0 && <div className="section-label">Full time</div>}
+        {ft.slice(0, 20).map((m) => <Match key={m.id} m={m} />)}
+        {up.length > 0 && <div className="section-label">Upcoming</div>}
+        {up.slice(0, 20).map((m) => <Match key={m.id} m={m} />)}
+        {ms.length === 0 && <div className="empty">No matches available right now.</div>}
+      </>
+    );
+  } else {
+    const groups = data.groups || [];
+    body = groups.length ? (<>{groups.map((g, i) => <StandingsTable key={(g.group || g.stage || 'tbl') + '-' + i} group={g} />)}<div className="section-label" style={{ paddingTop: 22 }}>Top two of each group advance · <span style={{ color: 'var(--rt)' }}>green = qualifying</span></div></>) : <div className="empty">No standings available yet.</div>;
+  }
+
+  return (
+    <div className="feed-col">
+      <div className="col-head"><div><h1>Sports</h1><div className="sub">World Cup 2026</div></div></div>
+      <div className="sports">
+        <div className="sports-hero">
+          <span className="ball">⚽</span>
+          <div className="kicker">FIFA World Cup · USA · Canada · Mexico</div>
+          <h2>World Cup 2026</h2>
+          <p>Live scores and group standings</p>
+        </div>
+        <div className="seg-tabs">
+          <button className="seg-tab" data-active={seg === 'matches' ? '1' : '0'} onClick={() => setSeg('matches')}>Matches</button>
+          <button className="seg-tab" data-active={seg === 'standings' ? '1' : '0'} onClick={() => setSeg('standings')}>Standings</button>
+        </div>
+        {body}
+      </div>
+    </div>
+  );
+}
+
+function SettingsScreen({ currentUser, onSaved, onLogout, go }) {
+  const [displayName, setDisplayName] = useState(currentUser.display_name || '');
+  const [bio, setBio] = useState(currentUser.bio || '');
+  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar_url || '');
+  const [bannerUrl, setBannerUrl] = useState(currentUser.banner_url || '');
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState(false);
+  const [busy, setBusy] = useState('');
 
   async function upload(file, setter, which) {
     if (!file) return;
-    setError(""); setBusy(which);
-    try { setter(await apiUploadImage(file)); }
-    catch (err) { setError(err.message); }
-    finally { setBusy(""); }
+    setErr(''); setBusy(which);
+    try { setter(await apiUploadImage(file)); } catch (e) { setErr(e.message); } finally { setBusy(''); }
   }
-
-  async function handleSave(e) {
-    e.preventDefault();
-    setError(""); setSaved(false);
+  async function save(e) {
+    e.preventDefault(); setErr(''); setOk(false);
     try {
-      const updated = await apiUpdateProfile({
-        display_name: displayName.trim(), bio: bio.trim(),
-        avatar_url: avatarUrl || null, banner_url: bannerUrl || null,
-        theme, avatar_anim: avatarAnim || null, page_effect: pageEffect === "none" ? null : pageEffect,
-      });
-      onSaved(updated);
-      setSaved(true);
-    } catch (err) { setError(err.message); }
+      const u = await apiUpdateProfile({ display_name: displayName.trim(), bio: bio.trim(), avatar_url: avatarUrl || null, banner_url: bannerUrl || null });
+      onSaved(u); setOk(true);
+    } catch (x) { setErr(x.message); }
   }
-
-  // Build the mascot option list (with a "None" choice).
-  const mascotOptions = [{ key: "", label: "None" }].concat(
-    Object.keys(MASCOTS).map((k) => ({ key: k, label: MASCOTS[k] }))
-  );
-  // A preview user object so the Avatar reflects the current choices live.
-  const previewUser = { username: currentUser.username, avatar_url: avatarUrl, avatar_anim: avatarAnim };
+  const preview = { username: currentUser.username, display_name: displayName, avatar_url: avatarUrl };
 
   return (
-    <div>
-      <h2 className="page-title">Settings</h2>
-      <form className="card" onSubmit={handleSave}>
-        <label className="field-label">Display name</label>
-        <input className="field" placeholder="e.g. Ada Lovelace" value={displayName} maxLength={50} onChange={(e) => setDisplayName(e.target.value)} />
+    <div className="feed-col">
+      <div className="col-head">
+        <button className="iconbtn back-btn" onClick={() => go('feed')} aria-label="Back"><Icon name="back" /></button>
+        <div><h1>Settings</h1></div>
+      </div>
+      <form className="settings-body" onSubmit={save}>
+        <label>Display name</label>
+        <input className="field" maxLength={50} value={displayName} placeholder="e.g. Ada Lovelace" onChange={(e) => setDisplayName(e.target.value)} />
 
-        <label className="field-label">Bio</label>
-        <textarea className="field" placeholder="A short something about you…" value={bio} maxLength={160} onChange={(e) => setBio(e.target.value)} />
+        <label>Bio</label>
+        <textarea className="field" maxLength={160} value={bio} placeholder="A short something about you…" onChange={(e) => setBio(e.target.value)} />
 
-        <h3 className="settings-section">Appearance</h3>
-
-        <label className="field-label">Profile photo</label>
-        <div className="avatar-edit">
-          <Avatar user={previewUser} size={64} />
-          <label className="btn-ghost btn-sm upload-label">
-            {busy === "avatar" ? "Uploading…" : "Upload photo"}
-            <input type="file" accept="image/*" hidden onChange={(e) => upload(e.target.files[0], setAvatarUrl, "avatar")} />
-          </label>
-          {avatarUrl && <button type="button" className="btn-ghost btn-sm" onClick={() => setAvatarUrl("")}>Remove</button>}
-        </div>
-        {!avatarUrl && <div className="hint">No photo? Pick an animated mascot below, or we'll use a colorful initial.</div>}
-
-        <label className="field-label">Banner</label>
-        <div className={"banner-preview" + (bannerUrl ? " has-image" : "")} style={bannerUrl ? { backgroundImage: `url(${bannerUrl})` } : {}}></div>
-        <div className="avatar-edit">
-          <label className="btn-ghost btn-sm upload-label">
-            {busy === "banner" ? "Uploading…" : "Upload banner"}
-            <input type="file" accept="image/*" hidden onChange={(e) => upload(e.target.files[0], setBannerUrl, "banner")} />
-          </label>
-          {bannerUrl && <button type="button" className="btn-ghost btn-sm" onClick={() => setBannerUrl("")}>Remove</button>}
+        <label>Profile photo</label>
+        <div className="set-row">
+          <Avatar user={preview} size={64} />
+          <label className="ghost-btn upload-label">{busy === 'avatar' ? 'Uploading…' : 'Upload photo'}<input type="file" accept="image/*" hidden onChange={(e) => upload(e.target.files[0], setAvatarUrl, 'avatar')} /></label>
+          {avatarUrl && <button type="button" className="ghost-btn" onClick={() => setAvatarUrl('')}>Remove</button>}
         </div>
 
-        <label className="field-label">Theme (applies after you save)</label>
-        <OptionRow options={THEMES} value={theme} onChange={setTheme} />
+        <label>Banner</label>
+        <div className="set-banner" style={bannerUrl ? { backgroundImage: `url(${bannerUrl})` } : {}}></div>
+        <div className="set-row">
+          <label className="ghost-btn upload-label">{busy === 'banner' ? 'Uploading…' : 'Upload banner'}<input type="file" accept="image/*" hidden onChange={(e) => upload(e.target.files[0], setBannerUrl, 'banner')} /></label>
+          {bannerUrl && <button type="button" className="ghost-btn" onClick={() => setBannerUrl('')}>Remove</button>}
+        </div>
 
-        <label className="field-label">Animated mascot {avatarUrl ? "(hidden while a photo is set)" : ""}</label>
-        <OptionRow options={mascotOptions} value={avatarAnim} onChange={setAvatarAnim} />
-
-        <label className="field-label">Background effect</label>
-        <OptionRow options={EFFECTS} value={pageEffect} onChange={setPageEffect} />
-
-        {error && <div className="error">{error}</div>}
-        {saved && <div className="success">Saved! ✨</div>}
-        <button className="btn" type="submit" disabled={!!busy}>Save changes</button>
+        {err && <div className="form-err">{err}</div>}
+        {ok && <div className="form-ok">Saved! ✨</div>}
+        <div className="set-row" style={{ marginTop: 18 }}>
+          <button className="post-btn" type="submit" disabled={!!busy}>Save changes</button>
+          <button className="ghost-btn" type="button" onClick={onLogout}>Log out</button>
+        </div>
+        <p className="muted" style={{ fontSize: 13, marginTop: 16 }}>Tip: tap the 🎨 button (bottom-right) to switch between the 8 themes and layouts.</p>
       </form>
     </div>
   );
 }
 
-// ---- App ----
-function App() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [tweets, setTweets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState({ name: "feed" });
-
-  async function reloadFeed() { setTweets(await apiGetFeed()); }
-
-  useEffect(() => {
-    (async () => {
-      try { setCurrentUser(await apiGetCurrentUser()); await reloadFeed(); }
-      catch (err) { console.error(err); } finally { setLoading(false); }
-    })();
-  }, []);
-
-  // Apply the logged-in user's theme + background effect to the whole page.
-  useEffect(() => {
-    document.body.dataset.theme = (currentUser && currentUser.theme) || "neon";
-    document.body.dataset.effect = (currentUser && currentUser.page_effect) || "none";
-  }, [currentUser]);
-
-  function openProfile(username) { setView({ name: "profile", username }); }
-  function selectTab(name) { setView({ name }); if (name === "feed") reloadFeed(); }
-  function goHome() { setView({ name: "feed" }); reloadFeed(); }
-  async function handleLogout() { await apiLogout(); setCurrentUser(null); setView({ name: "feed" }); reloadFeed(); }
-  function handleProfileSaved(u) { setCurrentUser(u); reloadFeed(); }
-
+function AuthScreen({ onAuthed }) {
+  const [mode, setMode] = useState('login');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function submit(e) {
+    e.preventDefault(); setErr(''); setBusy(true);
+    try { onAuthed(mode === 'login' ? await apiLogin(username, password) : await apiSignup(username, password)); }
+    catch (x) { setErr(x.message); } finally { setBusy(false); }
+  }
   return (
-    <div className="app">
-      <header className="header">
-        <div className="logo" onClick={goHome}>✦ BoonTweet</div>
-        <div className="header-nav">
-          {currentUser ? (
-            <>
-              <button className="icon-btn" title="Settings" onClick={() => setView({ name: "settings" })}>⚙</button>
-              <Avatar user={currentUser} size={36} onClick={() => openProfile(currentUser.username)} />
-              <button className="btn-ghost" onClick={handleLogout}>Log out</button>
-            </>
-          ) : (
-            <span className="muted">Log in to post</span>
-          )}
+    <div className="auth-stage">
+      <div className="auth-card">
+        <div className="brand">
+          <div className="brand-mark">b</div>
+          <div className="brand-word">boon<b>tweet</b></div>
         </div>
-      </header>
-
-      <Tabs active={view.name} onSelect={selectTab} />
-
-      {loading ? (
-        <div className="empty">Loading…</div>
-      ) : view.name === "sports" ? (
-        <SportsTab />
-      ) : view.name === "settings" ? (
-        <Settings currentUser={currentUser} onSaved={handleProfileSaved} />
-      ) : view.name === "profile" ? (
-        <Profile username={view.username} currentUser={currentUser} onChanged={reloadFeed} onOpenProfile={openProfile} onEdit={() => setView({ name: "settings" })} />
-      ) : (
-        <>
-          {currentUser
-            ? <Composer currentUser={currentUser} onPosted={reloadFeed} />
-            : <AuthForm onAuthed={(u) => { setCurrentUser(u); reloadFeed(); }} />}
-          <Feed tweets={tweets} currentUser={currentUser} onChanged={reloadFeed} onOpenProfile={openProfile} />
-        </>
-      )}
+        <div className="auth-tabs">
+          <button data-active={mode === 'login' ? '1' : '0'} onClick={() => setMode('login')}>Log in</button>
+          <button data-active={mode === 'signup' ? '1' : '0'} onClick={() => setMode('signup')}>Sign up</button>
+        </div>
+        <form onSubmit={submit}>
+          <input className="field" placeholder="username" value={username} autoComplete="username" onChange={(e) => setUsername(e.target.value)} />
+          <input className="field" type="password" placeholder="password" value={password} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} onChange={(e) => setPassword(e.target.value)} />
+          {err && <div className="form-err">{err}</div>}
+          <button className="btn-primary" type="submit" disabled={busy}>{mode === 'login' ? 'Log in' : 'Create account'}</button>
+        </form>
+      </div>
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+// ---- App controller ----
+const TWEAK_KEY = 'boontweet_tweaks';
+const DEFAULT_TWEAKS = { theme: 'neon', accent: '#22d3ee', font: '', nav: 'sidebar', cards: 'glassy', density: 'spacious' };
+function loadTweaks() { try { return JSON.parse(localStorage.getItem(TWEAK_KEY)); } catch (e) { return null; } }
+
+function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [route, setRoute] = useState({ name: 'feed', params: null });
+  const [toast, setToast] = useState(null);
+  const [tweaks, setTweaks] = useState(() => ({ ...DEFAULT_TWEAKS, ...(loadTweaks() || {}) }));
+  const savedRef = useRef(loadTweaks());
+  const toastTimer = useRef();
+
+  const flash = (msg) => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 1600); };
+
+  async function reloadFeed() { setPosts(await apiGetFeed()); }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const user = await apiGetCurrentUser();
+        setCurrentUser(user);
+        if (user) {
+          // DB is the source of truth for theme. If the user has no saved
+          // local tweaks yet, snap all knobs to their theme's defaults.
+          if (user.theme && THEME_BY_ID[user.theme]) {
+            if (savedRef.current) setTweaks((t) => ({ ...t, theme: user.theme }));
+            else { const th = THEME_BY_ID[user.theme]; setTweaks({ theme: th.id, accent: th.accent, font: '', nav: th.nav, cards: th.card, density: th.density }); }
+          }
+          await reloadFeed();
+        }
+      } catch (e) { console.error(e); } finally { setLoading(false); }
+    })();
+  }, []);
+
+  function persistTweaks(next) { setTweaks(next); try { localStorage.setItem(TWEAK_KEY, JSON.stringify(next)); } catch (e) {} }
+  async function saveThemeToDb(theme) { if (USE_FAKE_DATA || !currentUser) return; try { setCurrentUser(await apiUpdateProfile({ theme })); } catch (e) {} }
+  function setTweak(key, val) { const next = { ...tweaks, [key]: val }; persistTweaks(next); if (key === 'theme') saveThemeToDb(val); }
+  function pickTheme(id) { const th = THEME_BY_ID[id]; persistTweaks({ theme: id, accent: th.accent, font: '', nav: th.nav, cards: th.card, density: th.density }); saveThemeToDb(id); }
+
+  function go(name, params = null) { setRoute({ name, params }); window.scrollTo({ top: 0 }); }
+  const openTweet = (tw) => go('detail', tw);
+  async function handleLogout() { await apiLogout(); setCurrentUser(null); setRoute({ name: 'feed' }); setPosts([]); }
+
+  // Shared tweet action handlers. `reload` defaults to reloadFeed but screens
+  // can pass their own (e.g. the profile reloads its own data).
+  const onLike = async (tw, reload = reloadFeed) => { try { tw.liked_by_me ? await apiUnlike(tw.id) : await apiLike(tw.id); } catch (e) { alert(e.message); } reload(); };
+  const onRt = async (tw, reload = reloadFeed) => { const was = tw.retweeted_by_me; try { was ? await apiUnretweet(tw.id) : await apiRetweet(tw.id); } catch (e) { alert(e.message); return; } flash(was ? 'Removed retweet' : 'Retweeted to your followers'); reload(); };
+  const onDelete = async (id, reload = reloadFeed) => { if (!confirm('Delete this tweet?')) return; try { await apiDeletePost(id); } catch (e) { alert(e.message); return; } flash('Tweet deleted'); reload(); };
+  const onShare = () => { try { navigator.clipboard && navigator.clipboard.writeText(window.location.href); } catch (e) {} flash('Link copied'); };
+  const postTweet = async ({ text, imageUrl }) => { try { await apiCreatePost(text, imageUrl); } catch (e) { alert(e.message); return; } flash('Your tweet was posted'); reloadFeed(); };
+
+  const handlers = { onOpen: openTweet, onLike, onRt, onDelete, onShare };
+  const cards = tweaks.cards !== 'rows';
+
+  // Apply theme + layout to <html> (NOT an inner div). CSS custom properties
+  // only cascade downward, so the themed vars must live at/above <body> for
+  // style.css's `body { background/color/font: var(...) }` rules to pick up the
+  // active theme. Putting them on an inner wrapper would leave body on the
+  // :root defaults (illegible text + wrong font/background on light themes).
+  useEffect(() => {
+    const r = document.documentElement;
+    r.setAttribute('data-theme', tweaks.theme);
+    r.setAttribute('data-nav', tweaks.nav);
+    r.setAttribute('data-density', tweaks.density);
+    r.setAttribute('data-card', tweaks.cards);
+    r.style.setProperty('--accent', tweaks.accent);
+    if (tweaks.font) r.style.setProperty('--font', tweaks.font);
+    else r.style.removeProperty('--font');
+    // Keep gradients coherent: a CUSTOM accent also retints the secondary, but
+    // a theme's default accent keeps the theme's own --accent-2 (e.g. neon's
+    // cyan→magenta).
+    const themeAccent = (THEME_BY_ID[tweaks.theme] || {}).accent;
+    if (tweaks.accent && tweaks.accent !== themeAccent) r.style.setProperty('--accent-2', tweaks.accent);
+    else r.style.removeProperty('--accent-2');
+  }, [tweaks]);
+
+  // wrap() pairs the current screen with the floating Appearance panel (the
+  // panel shows even logged-out so you can preview themes on the login screen).
+  const wrap = (inner) => (
+    <>
+      {inner}
+      {!loading && <AppearancePanel tweaks={tweaks} onPick={pickTheme} onSet={setTweak} />}
+    </>
+  );
+
+  if (loading) return wrap(<div className="auth-stage"><div className="empty">Loading…</div></div>);
+  if (!currentUser) return wrap(<AuthScreen onAuthed={(u) => { setCurrentUser(u); reloadFeed(); }} />);
+
+  let screen;
+  if (route.name === 'detail' && route.params) {
+    screen = <TweetDetailScreen tweet={route.params} currentUser={currentUser} cards={cards} onBack={() => go('feed')} onChanged={reloadFeed} go={go} />;
+  } else if (route.name === 'sports') {
+    screen = <SportsScreen />;
+  } else if (route.name === 'settings') {
+    screen = <SettingsScreen currentUser={currentUser} onSaved={(u) => { setCurrentUser(u); flash('Profile saved'); }} onLogout={handleLogout} go={go} />;
+  } else if (route.name === 'profile') {
+    screen = <ProfileScreen username={route.params || currentUser.username} currentUser={currentUser} cards={cards} handlers={handlers} go={go} />;
+  } else {
+    screen = <FeedScreen posts={posts} currentUser={currentUser} cards={cards} onPost={postTweet} handlers={handlers} go={go} />;
+  }
+
+  return wrap(
+    <div className="stage">
+      <div className="app">
+        <Sidebar route={route} currentUser={currentUser} go={go} onCompose={() => go('feed')} onLogout={handleLogout} />
+        <TopNav route={route} currentUser={currentUser} go={go} />
+        {screen}
+        <Aside go={go} />
+      </div>
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);

@@ -5,21 +5,23 @@ A minimal Twitter clone built for learning full-stack web development.
 **Stack:** React (loaded from a CDN, no build step) · Node.js + Express · PostgreSQL
 
 A social app with accounts, a feed, likes, replies, retweets, profiles, image
-uploads, deep profile customization, and a **live World Cup 2026** tab. It uses
-a **Dark Neon** theme (plus other themes) and runs from a **single server**.
+uploads, **8 switchable themes**, and a **live World Cup 2026** tab. It runs
+from a **single server**.
 
 ### Features
 
 - 🔐 **Accounts** — sign up, log in, log out (passwords hashed with bcrypt).
 - 📝 **Tweets** — post up to 280 chars, with an optional image (upload a file or paste a URL).
 - ❤️ **Likes**, 💬 **Replies**, and 🔁 **Retweets** — retweets show in the feed with a "retweeted by" label.
-- 🧭 **Tabs** — a **Feed** tab and a **Sports** tab.
+- 🧭 **Layout** — sidebar or top-tabs navigation; Feed and a Sports tab.
 - ⚽ **World Cup 2026** — live fixtures, scores, and standings (via football-data.org).
 - 👤 **Profiles** — avatar, banner, display name, bio, and the user's tweets + retweets.
 - 🖼️ **Image uploads** — stored in PostgreSQL and served back from the app.
-- 🎨 **Customization** — upload a profile photo + banner, pick a color **theme**,
-  an animated **mascot** avatar, and an ambient **background effect**.
-- 🪄 **Avatars** — uploaded photo → animated mascot → auto-generated gradient initial.
+- 🎨 **8 themes + live Appearance panel** — Dark Neon, Clean Light, Y2K Pop, Brutalist,
+  Terminal, Glass, Editorial, Cozy Pastel. The floating 🎨 panel switches **theme,
+  accent, font, navigation, card style, and density** instantly; your theme is saved
+  to your account, the other tweaks to your browser.
+- 🪄 **Avatars** — your uploaded photo, otherwise an auto-generated gradient initial.
 
 ---
 
