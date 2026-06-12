@@ -62,6 +62,37 @@ CREATE INDEX IF NOT EXISTS idx_likes_post_id ON likes (post_id);
 
 
 -- ---------------------------------------------------------------------------
+-- comments — one row per reply to a post.
+-- ---------------------------------------------------------------------------
+-- Like posts, comments belong to a user and (here) to a post. Deleting a post
+-- removes its comments automatically (ON DELETE CASCADE).
+CREATE TABLE IF NOT EXISTS comments (
+  id         SERIAL  PRIMARY KEY,
+  post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content    VARCHAR(280) NOT NULL,
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments (post_id);
+
+
+-- ---------------------------------------------------------------------------
+-- retweets — one row per (user re-shared post) relationship.
+-- ---------------------------------------------------------------------------
+-- Same shape and idea as "likes": UNIQUE(user_id, post_id) means you can't
+-- retweet the same post twice. A retweet makes the post show up in the
+-- retweeter's feed/profile with a "retweeted by" label.
+CREATE TABLE IF NOT EXISTS retweets (
+  id         SERIAL  PRIMARY KEY,
+  post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  UNIQUE (user_id, post_id)
+);
+CREATE INDEX IF NOT EXISTS idx_retweets_post_id ON retweets (post_id);
+
+
+-- ---------------------------------------------------------------------------
 -- session — where logins are stored (managed by the "connect-pg-simple" lib).
 -- ---------------------------------------------------------------------------
 -- WHY store sessions in Postgres? A logged-in user's session would normally

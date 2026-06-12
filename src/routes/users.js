@@ -2,13 +2,16 @@
 // routes/users.js — public profile pages + editing your own profile.
 // ===========================================================================
 // A profile is: the user's info (name, bio, join date) + the tweets they
-// wrote. Anyone can VIEW a profile. Only the logged-in user can EDIT their
-// own profile (via the Settings page, which calls PUT /api/users/me).
+// wrote AND the tweets they retweeted. Anyone can VIEW a profile; only the
+// logged-in user can EDIT their own (via Settings -> PUT /api/users/me).
 // ===========================================================================
 
 const express = require('express');
 const pool = require('../db');
 const { requireLogin } = require('./auth');
+// Reuse the exact same post columns/counts the feed uses, so a tweet looks
+// identical whether you see it in the feed or on a profile.
+const { POST_FIELDS } = require('./posts');
 
 const router = express.Router();
 
@@ -18,12 +21,8 @@ const MAX_BIO = 160;
 // ---------------------------------------------------------------------------
 // PUT /api/users/me  -> update the logged-in user's display name and bio.
 // ---------------------------------------------------------------------------
-// NOTE: this is defined BEFORE "/:username" below. Order matters in Express —
-// it tries routes top to bottom. (They're different HTTP methods here, so
-// there's no real clash, but keeping "me" first is a good habit.)
 router.put('/me', requireLogin, async (req, res, next) => {
   try {
-    // Trim, then turn an empty string into NULL so "cleared" fields are blank.
     let displayName = (req.body.display_name || '').trim() || null;
     let bio = (req.body.bio || '').trim() || null;
 
@@ -35,13 +34,11 @@ router.put('/me', requireLogin, async (req, res, next) => {
     }
 
     const result = await pool.query(
-      `UPDATE users
-         SET display_name = $1, bio = $2
-       WHERE id = $3
-       RETURNING id, username, display_name, bio, created_at`,
+      `UPDATE users SET display_name = $1, bio = $2
+        WHERE id = $3
+        RETURNING id, username, display_name, bio, created_at`,
       [displayName, bio, req.session.userId]
     );
-
     res.json({ user: result.rows[0] });
   } catch (err) {
     next(err);
@@ -55,7 +52,6 @@ router.get('/:username', async (req, res, next) => {
   try {
     const { username } = req.params;
 
-    // 1) Find the user.
     const userResult = await pool.query(
       'SELECT id, username, display_name, bio, created_at FROM users WHERE username = $1',
       [username]
@@ -65,28 +61,23 @@ router.get('/:username', async (req, res, next) => {
     }
     const user = userResult.rows[0];
 
-    // 2) Find that user's tweets, newest first. We include the same
-    //    like_count / liked_by_me / image_url fields the feed uses so the
-    //    Profile page can reuse the exact same Tweet component on the frontend.
-    //    $1 = the profile owner's id, $2 = the *viewer's* id (for liked_by_me).
+    // The user's own tweets + the tweets they retweeted (same UNION idea as
+    // the main feed). $1 = the VIEWER (for liked/retweeted flags),
+    // $2 = the profile owner.
     const viewerId = req.session.userId || null;
     const postsResult = await pool.query(
-      `SELECT
-         p.id,
-         p.content,
-         p.image_url,
-         p.created_at,
-         u.username,
-         u.display_name,
-         COUNT(l.id)::int AS like_count,
-         COALESCE(BOOL_OR(l.user_id = $2), false) AS liked_by_me
-       FROM posts p
-       JOIN users u ON u.id = p.user_id
-       LEFT JOIN likes l ON l.post_id = p.id
-       WHERE p.user_id = $1
-       GROUP BY p.id, u.username, u.display_name
-       ORDER BY p.created_at DESC, p.id DESC`,
-      [user.id, viewerId]
+      `SELECT ${POST_FIELDS}, NULL::text AS retweeted_by, p.created_at AS sort_time
+         FROM posts p JOIN users u ON u.id = p.user_id
+        WHERE p.user_id = $2
+       UNION ALL
+       SELECT ${POST_FIELDS}, ru.username AS retweeted_by, r.created_at AS sort_time
+         FROM retweets r
+         JOIN posts p ON p.id = r.post_id
+         JOIN users u ON u.id = p.user_id
+         JOIN users ru ON ru.id = r.user_id
+        WHERE r.user_id = $2
+        ORDER BY sort_time DESC, id DESC`,
+      [viewerId, user.id]
     );
 
     res.json({ user, posts: postsResult.rows });

@@ -454,3 +454,174 @@ textarea.field {
   color: var(--muted);
   padding: 48px 0;
 }
+
+/* ==========================================================================
+   Phase 1 additions: tabs, tweet actions, retweets, comments, sports tab
+   ========================================================================== */
+
+/* ---- Tabs (primary navigation: Feed | Sports) ---- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px;
+  backdrop-filter: blur(6px);
+}
+.tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 15px;
+  padding: 9px 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab.active {
+  color: #07111a;
+  background: var(--accent);
+}
+
+/* ---- Tweet action buttons: reply / retweet / like ---- */
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 15px;
+  padding: 4px;
+  transition: color 0.15s ease, transform 0.08s ease;
+}
+.action-btn:hover {
+  color: var(--cyan);
+}
+.action-btn:active {
+  transform: scale(1.15);
+}
+/* retweet = green glow when active */
+.action-btn.retweet:hover {
+  color: #4ade80;
+}
+.action-btn.retweet.on {
+  color: #4ade80;
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
+}
+/* like = magenta glow when active */
+.action-btn.like:hover {
+  color: var(--pink);
+}
+.action-btn.like.on {
+  color: var(--magenta);
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(232, 121, 249, 0.7);
+}
+
+/* ---- "retweeted by @user" label above a retweeted post ---- */
+.retweet-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.retweet-label:hover {
+  color: #4ade80;
+}
+
+/* ---- Comments / replies ---- */
+.comments {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.comment-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.comment-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+.comment-input:focus {
+  box-shadow: var(--glow-cyan);
+  border-color: transparent;
+}
+.btn-sm {
+  padding: 7px 14px;
+  font-size: 13px;
+}
+.comment {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+}
+.comment-body {
+  flex: 1;
+  min-width: 0;
+}
+.comment-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+.comment-handle {
+  color: var(--muted);
+  font-size: 13px;
+  margin-left: 6px;
+}
+.comment-text {
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin-top: 2px;
+}
+.comment-delete {
+  float: right;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+.comment-delete:hover {
+  color: var(--danger);
+}
+.comment-loading {
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+/* ---- Sports tab placeholder (replaced by live data in Phase 3) ---- */
+.sports-placeholder {
+  text-align: center;
+  padding: 48px 20px;
+}
+.sports-emoji {
+  font-size: 52px;
+}
+.sports-placeholder h2 {
+  font-family: "Space Grotesk", sans-serif;
+  margin: 12px 0 6px;
+}
