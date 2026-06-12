@@ -155,6 +155,14 @@ async function apiAddComment(postId, content) {
 async function apiDeleteComment(postId, commentId) { if (USE_FAKE_DATA) { FAKE_COMMENTS[postId] = (FAKE_COMMENTS[postId] || []).filter((c) => c.id !== commentId); return; } await fetchJson('/api/posts/' + postId + '/comments/' + commentId, { method: 'DELETE' }); }
 
 async function apiGetSports(which) { if (USE_FAKE_DATA) return { configured: true, matches: FAKE_SPORTS.matches, groups: FAKE_SPORTS.groups }; return await fetchJson('/api/sports/' + which); }
+async function apiNews(topic) {
+  if (USE_FAKE_DATA) return { topic, items: [{ title: 'Sample headline (fake data)', source: 'Demo', link: '#', pubDate: new Date().toISOString() }] };
+  return await fetchJson('/api/explore/news?topic=' + encodeURIComponent(topic || 'top'));
+}
+async function apiVideos() {
+  if (USE_FAKE_DATA) return { videos: [] };
+  return await fetchJson('/api/explore/videos');
+}
 
 // ===========================================================================
 // PART 3 — helpers, components, screens, controller
@@ -215,6 +223,7 @@ const PATHS = {
   trophy: 'M7 4h10v4a5 5 0 0 1-10 0V4ZM5 5H3v2a3 3 0 0 0 3 3M19 5h2v2a3 3 0 0 1-3 3M9 14h6M12 14v4m-3 2h6',
   settings: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm8 3a8 8 0 0 0-.2-1.7l2-1.6-2-3.4-2.3 1a8 8 0 0 0-3-1.7L14 2h-4l-.5 2.6a8 8 0 0 0-3 1.7l-2.3-1-2 3.4 2 1.6A8 8 0 0 0 4 12c0 .6.1 1.1.2 1.7l-2 1.6 2 3.4 2.3-1a8 8 0 0 0 3 1.7L10 22h4l.5-2.6a8 8 0 0 0 3-1.7l2.3 1 2-3.4-2-1.6c.1-.6.2-1.1.2-1.7Z',
   logout: 'M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4m7 14 5-5-5-5m5 5H9',
+  explore: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm3.6 5.4-2.2 5.4-5.4 2.2 2.2-5.4 5.4-2.2Z',
 };
 function Icon({ name, className = 'ico', fill }) {
   return (
@@ -361,6 +370,7 @@ function ReplyRow({ c, currentUser, onDelete, onOpenProfile, go }) {
 const NAV = [
   { id: 'feed', label: 'Home', icon: 'home' },
   { id: 'search', label: 'Search', icon: 'search' },
+  { id: 'explore', label: 'Explore', icon: 'explore' },
   { id: 'sports', label: 'Sports', icon: 'trophy' },
   { id: 'profile', label: 'Profile', icon: 'user' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
@@ -421,6 +431,7 @@ function MobileNav({ route, currentUser, go }) {
   const items = [
     { id: 'feed', icon: 'home' },
     { id: 'search', icon: 'search' },
+    { id: 'explore', icon: 'explore' },
     { id: 'sports', icon: 'trophy' },
     { id: 'profile', icon: 'user' },
   ];
@@ -890,6 +901,232 @@ function SearchScreen({ initialQuery, currentUser, cards, handlers, go }) {
   );
 }
 
+// ---- Explore: News · Videos · Games ----
+const NEWS_TOPICS = [['top', 'Top'], ['world', 'World'], ['tech', 'Tech'], ['sports', 'Sports'], ['science', 'Science'], ['business', 'Business']];
+
+function NewsList() {
+  const [topic, setTopic] = useState('top');
+  const [data, setData] = useState(null);
+  useEffect(() => { setData(null); apiNews(topic).then(setData).catch(() => setData({ error: 'Could not load news.' })); }, [topic]);
+  return (
+    <>
+      <div className="seg-tabs" style={{ flexWrap: 'wrap' }}>
+        {NEWS_TOPICS.map(([k, l]) => (
+          <button key={k} className="seg-tab" data-active={topic === k ? '1' : '0'} onClick={() => setTopic(k)}>{l}</button>
+        ))}
+      </div>
+      {!data ? <div className="empty">Loading news…</div>
+        : data.error ? <div className="empty">{data.error}</div>
+        : !data.items || data.items.length === 0 ? <div className="empty">No headlines right now.</div>
+        : data.items.map((it, i) => (
+          <a className="news-item" key={i} href={it.link} target="_blank" rel="noopener noreferrer">
+            <div className="news-meta">{it.source}{it.pubDate ? ' · ' + timeAgo(it.pubDate) : ''}</div>
+            <div className="news-title">{it.title}</div>
+          </a>
+        ))}
+    </>
+  );
+}
+
+function VideoGrid() {
+  const [data, setData] = useState(null);
+  const [playing, setPlaying] = useState(null);
+  useEffect(() => { apiVideos().then(setData).catch(() => setData({ error: 'Could not load videos.' })); }, []);
+  if (!data) return <div className="empty">Loading videos…</div>;
+  if (data.error) return <div className="empty">{data.error}</div>;
+  if (!data.videos || !data.videos.length) return <div className="empty">No videos right now.</div>;
+  return (
+    <div className="vid-grid">
+      {data.videos.map((v) => (
+        <div className="vid-card" key={v.videoId}>
+          {playing === v.videoId ? (
+            <div className="vid-frame">
+              <iframe src={'https://www.youtube-nocookie.com/embed/' + v.videoId + '?autoplay=1'} title={v.title}
+                allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowFullScreen frameBorder="0"></iframe>
+            </div>
+          ) : (
+            <button className="vid-thumb" onClick={() => setPlaying(v.videoId)} aria-label={'Play ' + v.title}
+              style={{ backgroundImage: 'url(https://i.ytimg.com/vi/' + v.videoId + '/hqdefault.jpg)' }}>
+              <span className="vid-play">▶</span>
+            </button>
+          )}
+          <div className="vid-title">{v.title}</div>
+          <div className="vid-channel">{v.channel}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --- Game 1: Guess the Flag (reuses the World Cup nation→flag map) ---
+const FLAG_NATIONS = Object.keys(FLAG_ISO);
+function shuffle(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function makeFlagRound() {
+  const opts = shuffle(FLAG_NATIONS).slice(0, 4);
+  return { answer: opts[Math.floor(Math.random() * 4)], options: opts };
+}
+function GuessTheFlag({ onBack }) {
+  const [round, setRound] = useState(makeFlagRound);
+  const [score, setScore] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [picked, setPicked] = useState(null);
+  function choose(name) {
+    if (picked) return;
+    setPicked(name);
+    if (name === round.answer) { setScore((s) => s + 1); setStreak((s) => s + 1); } else { setStreak(0); }
+    setTimeout(() => { setPicked(null); setRound(makeFlagRound()); }, 850);
+  }
+  return (
+    <div className="game">
+      <div className="game-top">
+        <button className="btn-ghost btn-sm" onClick={onBack}>← Games</button>
+        <div className="game-score">Score {score} · 🔥 {streak}</div>
+      </div>
+      <img className="gf-flag" src={'https://flagcdn.com/' + FLAG_ISO[round.answer] + '.svg'} alt="Which country?" />
+      <div className="gf-options">
+        {round.options.map((o) => {
+          let cls = 'gf-opt';
+          if (picked) { if (o === round.answer) cls += ' correct'; else if (o === picked) cls += ' wrong'; }
+          return <button key={o} className={cls} onClick={() => choose(o)}>{o}</button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+// --- Game 2: 2048 (pure helpers below, then the component) ---
+function g2048Empty() { return [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]; }
+function g2048Spawn(grid) {
+  const g = grid.map((r) => r.slice());
+  const cells = [];
+  g.forEach((row, r) => row.forEach((v, c) => { if (!v) cells.push([r, c]); }));
+  if (!cells.length) return g;
+  const [r, c] = cells[Math.floor(Math.random() * cells.length)];
+  g[r][c] = Math.random() < 0.9 ? 2 : 4;
+  return g;
+}
+function g2048SlideRow(row) {
+  const a = row.filter((x) => x);
+  let gained = 0;
+  for (let i = 0; i < a.length - 1; i++) { if (a[i] === a[i + 1]) { a[i] *= 2; gained += a[i]; a.splice(i + 1, 1); } }
+  while (a.length < 4) a.push(0);
+  return { row: a, gained };
+}
+function g2048Move(grid, dir) {
+  const rev = (r) => r.slice().reverse();
+  const transpose = (m) => m[0].map((_, c) => m.map((r) => r[c]));
+  let work;
+  if (dir === 'left') work = grid.map((r) => r.slice());
+  else if (dir === 'right') work = grid.map(rev);
+  else if (dir === 'up') work = transpose(grid);
+  else work = transpose(grid).map(rev); // down
+  let gained = 0;
+  work = work.map((r) => { const s = g2048SlideRow(r); gained += s.gained; return s.row; });
+  let out;
+  if (dir === 'left') out = work;
+  else if (dir === 'right') out = work.map(rev);
+  else if (dir === 'up') out = transpose(work);
+  else out = transpose(work.map(rev));
+  return { grid: out, gained, moved: JSON.stringify(out) !== JSON.stringify(grid) };
+}
+function g2048Over(g) {
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+    if (!g[r][c]) return false;
+    if (c < 3 && g[r][c] === g[r][c + 1]) return false;
+    if (r < 3 && g[r][c] === g[r + 1][c]) return false;
+  }
+  return true;
+}
+function Game2048({ onBack }) {
+  const [grid, setGrid] = useState(() => g2048Spawn(g2048Spawn(g2048Empty())));
+  const [score, setScore] = useState(0);
+  const [over, setOver] = useState(false);
+  const [won, setWon] = useState(false);
+  const touch = useRef(null);
+
+  function doMove(dir) {
+    if (over) return;
+    setGrid((prev) => {
+      const res = g2048Move(prev, dir);
+      if (!res.moved) return prev;
+      const next = g2048Spawn(res.grid);
+      if (res.gained) setScore((s) => s + res.gained);
+      if (!won && next.some((row) => row.some((v) => v >= 2048))) setWon(true);
+      if (g2048Over(next)) setOver(true);
+      return next;
+    });
+  }
+  useEffect(() => {
+    const onKey = (e) => { const m = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }; if (m[e.key]) { e.preventDefault(); doMove(m[e.key]); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [over, won]);
+  function onTouchStart(e) { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY }; }
+  function onTouchEnd(e) {
+    if (!touch.current) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch.current.x, dy = t.clientY - touch.current.y;
+    touch.current = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+    if (Math.abs(dx) > Math.abs(dy)) doMove(dx > 0 ? 'right' : 'left'); else doMove(dy > 0 ? 'down' : 'up');
+  }
+  function reset() { setGrid(g2048Spawn(g2048Spawn(g2048Empty()))); setScore(0); setOver(false); setWon(false); }
+
+  return (
+    <div className="game">
+      <div className="game-top">
+        <button className="btn-ghost btn-sm" onClick={onBack}>← Games</button>
+        <div className="game-score">Score {score}</div>
+        <button className="btn-ghost btn-sm" onClick={reset}>New game</button>
+      </div>
+      <div className="g2048-board" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {grid.map((row, r) => row.map((v, c) => (
+          <div key={r + '-' + c} className="g2048-tile" data-v={v}>{v || ''}</div>
+        )))}
+      </div>
+      {(over || won) && (
+        <div className="g2048-msg">{won ? 'You reached 2048! 🎉' : 'Game over'} <button className="btn btn-sm" onClick={reset}>Play again</button></div>
+      )}
+      <div className="game-hint">Arrow keys or swipe to merge tiles → reach 2048</div>
+    </div>
+  );
+}
+
+function GamesHub() {
+  const [game, setGame] = useState(null);
+  if (game === 'flag') return <GuessTheFlag onBack={() => setGame(null)} />;
+  if (game === '2048') return <Game2048 onBack={() => setGame(null)} />;
+  return (
+    <div className="game-menu">
+      <button className="game-pick" onClick={() => setGame('flag')}>
+        <span className="game-emoji">🏳️</span><b>Guess the Flag</b><small>World Cup nations</small>
+      </button>
+      <button className="game-pick" onClick={() => setGame('2048')}>
+        <span className="game-emoji">🔢</span><b>2048</b><small>slide &amp; merge tiles</small>
+      </button>
+    </div>
+  );
+}
+
+function ExploreScreen({ initialTab, go }) {
+  const [tab, setTab] = useState(initialTab === 'games' || initialTab === 'videos' ? initialTab : 'news');
+  return (
+    <div className="feed-col">
+      <div className="col-head"><div><h1>Explore</h1><div className="sub">News · Videos · Games</div></div></div>
+      <div className="seg-tabs" style={{ paddingTop: 12 }}>
+        <button className="seg-tab" data-active={tab === 'news' ? '1' : '0'} onClick={() => setTab('news')}>📰 News</button>
+        <button className="seg-tab" data-active={tab === 'videos' ? '1' : '0'} onClick={() => setTab('videos')}>▶ Videos</button>
+        <button className="seg-tab" data-active={tab === 'games' ? '1' : '0'} onClick={() => setTab('games')}>🎮 Games</button>
+      </div>
+      <div className="explore-body">
+        {tab === 'news' && <NewsList />}
+        {tab === 'videos' && <VideoGrid />}
+        {tab === 'games' && <GamesHub />}
+      </div>
+    </div>
+  );
+}
+
 function SettingsScreen({ currentUser, onSaved, onLogout, go }) {
   const [displayName, setDisplayName] = useState(currentUser.display_name || '');
   const [bio, setBio] = useState(currentUser.bio || '');
@@ -1127,6 +1364,8 @@ function App() {
     screen = <TweetDetailScreen tweet={route.params} currentUser={currentUser} cards={cards} onBack={() => go('feed')} onChanged={reloadFeed} go={go} />;
   } else if (route.name === 'sports') {
     screen = <SportsScreen />;
+  } else if (route.name === 'explore') {
+    screen = <ExploreScreen initialTab={route.params} go={go} />;
   } else if (route.name === 'search') {
     screen = <SearchScreen initialQuery={route.params} currentUser={currentUser} cards={cards} handlers={genHandlers} go={go} />;
   } else if (route.name === 'settings') {

@@ -878,6 +878,67 @@ textarea.field { resize: vertical; min-height: 84px; line-height: 1.45; }
 .link { cursor: pointer; }
 
 /* ============================================================
+   EXPLORE — News · Videos · Games
+   ============================================================ */
+.explore-body { padding-bottom: 24px; }
+
+/* News */
+.news-item { display: block; padding: 14px var(--pad); border-bottom: 1px solid var(--border); text-decoration: none; color: var(--text); transition: background 0.12s; }
+.news-item:hover { background: var(--hover); }
+.news-meta { color: var(--muted); font-size: 12.5px; margin-bottom: 3px; }
+.news-title { font-size: 15.5px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+
+/* Videos */
+.vid-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 14px var(--pad); }
+.vid-card { min-width: 0; }
+.vid-thumb { display: block; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--border); border-radius: var(--radius-sm); background-size: cover; background-position: center; cursor: pointer; position: relative; padding: 0; }
+.vid-play { position: absolute; inset: 0; margin: auto; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 17px; }
+.vid-frame { aspect-ratio: 16 / 9; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.vid-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+.vid-title { font-size: 14px; font-weight: 600; margin-top: 7px; line-height: 1.3; overflow-wrap: anywhere; }
+.vid-channel { font-size: 12.5px; color: var(--muted); }
+@media (max-width: 560px) { .vid-grid { grid-template-columns: 1fr; } }
+
+/* Games hub */
+.game-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px var(--pad); }
+.game-pick { display: flex; flex-direction: column; align-items: flex-start; padding: 18px; border: 1px solid var(--card-border); border-radius: var(--radius); background: var(--card-bg); color: var(--text); cursor: pointer; box-shadow: var(--card-shadow); text-align: left; }
+.game-pick:hover { background: var(--hover); }
+.game-pick .game-emoji { font-size: 30px; margin-bottom: 6px; }
+.game-pick b { font-family: var(--font-display); font-size: 17px; }
+.game-pick small { color: var(--muted); }
+@media (max-width: 560px) { .game-menu { grid-template-columns: 1fr; } }
+
+.game { padding: 14px var(--pad); }
+.game-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.game-score { font-weight: 700; font-variant-numeric: tabular-nums; }
+.game-hint { color: var(--muted); font-size: 13px; text-align: center; margin-top: 12px; }
+
+/* Guess the Flag */
+.gf-flag { display: block; width: 100%; max-width: 320px; margin: 0 auto 16px; aspect-ratio: 3 / 2; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.gf-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.gf-opt { padding: 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+.gf-opt:hover { border-color: var(--accent); }
+.gf-opt.correct { background: var(--rt); color: #04140b; border-color: transparent; }
+.gf-opt.wrong { background: var(--like); color: #fff; border-color: transparent; }
+
+/* 2048 */
+.g2048-board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: var(--surface-2); padding: 8px; border-radius: var(--radius-sm); max-width: 360px; margin: 0 auto; aspect-ratio: 1; touch-action: none; }
+.g2048-tile { display: grid; place-items: center; border-radius: 8px; background: rgba(255, 255, 255, 0.05); font-family: var(--font-display); font-weight: 800; font-size: clamp(16px, 6vw, 30px); color: #0b1020; }
+.g2048-tile[data-v="0"] { color: transparent; }
+.g2048-tile[data-v="2"] { background: #eee4da; }
+.g2048-tile[data-v="4"] { background: #ede0c8; }
+.g2048-tile[data-v="8"] { background: #f2b179; color: #fff; }
+.g2048-tile[data-v="16"] { background: #f59563; color: #fff; }
+.g2048-tile[data-v="32"] { background: #f67c5f; color: #fff; }
+.g2048-tile[data-v="64"] { background: #f65e3b; color: #fff; }
+.g2048-tile[data-v="128"] { background: #edcf72; color: #fff; }
+.g2048-tile[data-v="256"] { background: #edcc61; color: #fff; }
+.g2048-tile[data-v="512"] { background: #edc850; color: #fff; }
+.g2048-tile[data-v="1024"] { background: #edc53f; color: #fff; font-size: clamp(13px, 5vw, 24px); }
+.g2048-tile[data-v="2048"] { background: #edc22e; color: #fff; font-size: clamp(13px, 5vw, 24px); }
+.g2048-msg { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 14px; font-weight: 700; }
+
+/* ============================================================
    MOBILE — phone layout + bottom tab bar (≤ 640px)
    ============================================================ */
 .mobile-nav { display: none; }

@@ -31,6 +31,7 @@ const userRoutes = require('./routes/users');
 const mediaRoutes = require('./routes/media');
 const sportsRoutes = require('./routes/sports');
 const searchRoutes = require('./routes/search');
+const exploreRoutes = require('./routes/explore');
 
 const app = express();
 
@@ -58,10 +59,11 @@ app.use(
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://unpkg.com'],
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-        imgSrc: ["'self'", 'data:', 'blob:', 'https:'], // uploads, previews, external links, crests
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'], // uploads, previews, external links, crests, flags, thumbnails
         connectSrc: ["'self'"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
+        frameSrc: ['https://www.youtube-nocookie.com', 'https://www.youtube.com'], // Explore video embeds
         frameAncestors: ["'self'"],
       },
     },
@@ -140,6 +142,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/sports', sportsRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/explore', exploreRoutes);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
