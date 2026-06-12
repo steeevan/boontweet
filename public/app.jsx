@@ -699,13 +699,33 @@ function ProfileScreen({ username, currentUser, cards, handlers, go }) {
   );
 }
 
+// Map football-data.org national-team names → ISO country codes, so we can show
+// clean, consistent country flags (flagcdn.com) instead of the patchy club-style
+// crests (many were missing). England/Scotland use flagcdn's subdivision flags.
+const FLAG_ISO = {
+  Algeria: 'dz', Argentina: 'ar', Australia: 'au', Austria: 'at', Belgium: 'be', 'Bosnia-H.': 'ba',
+  Brazil: 'br', Canada: 'ca', 'Cape Verde': 'cv', Colombia: 'co', 'Congo DR': 'cd', Croatia: 'hr',
+  'Curaçao': 'cw', Czechia: 'cz', Ecuador: 'ec', Egypt: 'eg', England: 'gb-eng', France: 'fr',
+  Germany: 'de', Ghana: 'gh', Haiti: 'ht', Iran: 'ir', Iraq: 'iq', 'Ivory Coast': 'ci', Japan: 'jp',
+  Jordan: 'jo', 'Korea Republic': 'kr', Mexico: 'mx', Morocco: 'ma', Netherlands: 'nl', 'New Zealand': 'nz',
+  Norway: 'no', Panama: 'pa', Paraguay: 'py', Portugal: 'pt', Qatar: 'qa', 'Saudi Arabia': 'sa',
+  Scotland: 'gb-sct', Senegal: 'sn', 'South Africa': 'za', Spain: 'es', Sweden: 'se', Switzerland: 'ch',
+  Tunisia: 'tn', Turkey: 'tr', USA: 'us', Uruguay: 'uy', Uzbekistan: 'uz',
+};
+function TeamFlag({ name, crest, className = 'crest' }) {
+  const iso = FLAG_ISO[name];
+  if (iso) return <img className={className} src={`https://flagcdn.com/${iso}.svg`} alt="" loading="lazy" />;
+  if (crest) return <img className={className} src={crest} alt="" loading="lazy" />;
+  return <span className={className} aria-hidden="true">⚽</span>; // TBD / unknown team
+}
+
 function Match({ m }) {
   const cls = m.status === 'IN_PLAY' || m.status === 'PAUSED' ? 'live' : m.status === 'FINISHED' ? 'ft' : 'up';
   const hasScore = m.homeScore != null && m.awayScore != null;
   const aWin = hasScore && m.homeScore > m.awayScore;
   const bWin = hasScore && m.awayScore > m.homeScore;
   const time = new Date(m.utcDate).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const crest = (t) => t.crest ? <img className="crest" src={t.crest} alt="" /> : <span className="flag">⚽</span>;
+  const crest = (t) => <TeamFlag name={t.name} crest={t.crest} />;
   return (
     <div className="match">
       <div className="match-top">
@@ -740,7 +760,7 @@ function StandingsTable({ group }) {
             {group.table.map((r, i) => (
               <tr key={r.team + i} className={i < 2 ? 'qual' : ''}>
                 <td className="pos">{r.position || i + 1}</td>
-                <td className="team-c">{r.crest ? <img className="crest" src={r.crest} alt="" /> : null}{r.team}</td>
+                <td className="team-c"><TeamFlag name={r.team} crest={r.crest} />{r.team}</td>
                 <td>{r.played}</td><td>{r.won}</td><td>{r.draw}</td><td>{r.lost}</td>
                 <td>{r.gd > 0 ? '+' : ''}{r.gd}</td><td className="pts">{r.points}</td>
               </tr>
