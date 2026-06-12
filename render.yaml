@@ -1,0 +1,34 @@
+# ===========================================================================
+# render.yaml — a Render "Blueprint" that describes the whole deployment.
+# ===========================================================================
+# Instead of clicking through the dashboard, you can point Render at this file
+# (New + > Blueprint) and it will create BOTH the web service and the database,
+# put them in the same region, and wire them together automatically:
+#   - DATABASE_URL is filled in from the database (no copy/paste).
+#   - SESSION_SECRET is generated for you (a strong random value).
+# ===========================================================================
+
+databases:
+  - name: boontweet-db
+    databaseName: boontweet      # the name of the database that gets created
+    user: boontweet
+    plan: free
+    region: oregon               # keep this the SAME as the web service below
+
+services:
+  - type: web
+    name: boontweet
+    runtime: node
+    plan: free
+    region: oregon               # same region as the database = fast internal link
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      # Pull the connection string straight from the database above.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: boontweet-db
+          property: connectionString
+      # Let Render generate a strong, random session secret.
+      - key: SESSION_SECRET
+        generateValue: true
