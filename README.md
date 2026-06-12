@@ -80,9 +80,9 @@ docker compose down     # stop the database (your data is KEPT)
 docker compose down -v  # stop AND wipe the data (start completely fresh)
 ```
 
-> The schema is loaded only the **first** time the database is created. If you
-> later change `schema.sql`, run `docker compose down -v` then `docker compose up -d`
-> to recreate the database with the new schema.
+> You don't need to load the schema by hand: the server runs `schema.sql`
+> itself on startup (safely, since every statement is `IF NOT EXISTS`), so the
+> tables are created automatically the first time you `npm start`.
 
 ### Option B — your own local PostgreSQL install
 
@@ -91,9 +91,8 @@ If you'd rather install PostgreSQL directly:
 ```bash
 npm install
 createdb boontweet                 # or: psql -c "CREATE DATABASE boontweet;"
-psql boontweet -f schema.sql       # load the tables — run ONCE
 cp .env.example .env               # then edit DATABASE_URL to match your setup
-npm start
+npm start                          # the tables are created automatically on startup
 ```
 
 In `.env`, set `DATABASE_URL` to point at your database (host, port, user,
@@ -177,27 +176,21 @@ On the web service's **Environment** tab, add:
 > You do **not** need to set `PORT` — Render provides it automatically, and
 > the app already reads it from the environment.
 
-### 4. Load the schema (run ONCE)
+### 4. Deploy & open your app
 
-After the database is live, run `schema.sql` against it one time. The easiest
-way is from your own machine using the database's **External** connection URL:
+That's it — there's **no manual schema step**. On startup the server runs
+`schema.sql` itself (every statement is `IF NOT EXISTS`, so it's safe), which
+creates the tables on the first boot against the empty database.
 
-```bash
-psql "PASTE_EXTERNAL_DATABASE_URL_HERE" -f schema.sql
-```
+Render builds and deploys automatically, then gives you a public URL like
+`https://boontweet.onrender.com`. Visit it, sign up, and you're live. 🎉
 
-(Render also has a **PSQL Command** button on the database page that opens a
-shell you can paste the `schema.sql` contents into.)
-
-### 5. Open your app
-
-Render gives you a public URL like `https://boontweet.onrender.com`. Visit it,
-sign up, and you're live. 🎉
+> Every future `git push` to `main` triggers an automatic redeploy.
 
 ---
 
 ## Common problems
 
-- **"relation 'users' does not exist"** → you didn't load `schema.sql` yet (step 3 locally / step 4 on Render).
-- **Login doesn't stick / "could not connect" on Render** → check `DATABASE_URL` is set and the app + DB are in the same region.
+- **Login doesn't stick / "could not connect" on Render** → check `DATABASE_URL` is set to the **Internal** URL and the app + DB are in the same region.
+- **First request is slow** → on Render's free tier the app "sleeps" after inactivity and takes ~30s to wake. That's normal.
 - **Page is blank** → open the browser's developer console (F12) for errors. In fake mode, make sure you opened the page through `http://localhost:3000`, not by double-clicking the file (Babel needs `http`).

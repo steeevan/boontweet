@@ -10,6 +10,7 @@
 // runs from one process — and deploys to Render as a single web service.
 // ===========================================================================
 
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const session = require('express-session');
@@ -73,6 +74,27 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong on the server.' });
 });
 
-app.listen(PORT, () => {
-  console.log(`BoonTweet running at http://localhost:${PORT}`);
-});
+// ---------------------------------------------------------------------------
+// Start up: make sure the tables exist, THEN start listening.
+// ---------------------------------------------------------------------------
+// We run schema.sql on every startup. Because every statement in it uses
+// "IF NOT EXISTS", this is safe to run repeatedly: it creates the tables the
+// first time and does nothing afterward. The payoff is that you never have to
+// remember to "load the schema" by hand — not locally, and not on Render.
+// (Keep schema.sql idempotent if you edit it, or startup will fail.)
+async function start() {
+  try {
+    const schema = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
+    await pool.query(schema);
+    console.log('Database schema is ready.');
+
+    app.listen(PORT, () => {
+      console.log(`BoonTweet running at http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('Failed to start — could not connect to the database:', err.message);
+    process.exit(1); // exit so the hosting platform knows the start failed
+  }
+}
+
+start();
