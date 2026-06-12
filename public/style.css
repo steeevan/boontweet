@@ -870,3 +870,6 @@ textarea.field { resize: vertical; min-height: 84px; line-height: 1.45; }
 /* ---- Team crest images (real data) replace flag emoji ---- */
 .team-row .crest { width: 28px; height: 28px; object-fit: contain; }
 .standings .team-c .crest { width: 20px; height: 20px; object-fit: contain; margin-right: 9px; vertical-align: -5px; }
+
+/* For-you / Following tabs sit flush under the feed header */
+.feed-scope { margin-top: 0; }

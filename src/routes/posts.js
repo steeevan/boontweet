@@ -71,22 +71,28 @@ function validateImageUrl(imageUrl) {
 router.get('/', async (req, res, next) => {
   try {
     const viewerId = req.session.userId || null;
-    // Pagination: return one page, newest first. The client asks for the next
-    // page with ?before=<sort_time of the last item it has>. Keeps the feed
-    // fast no matter how many posts exist.
+    // Pagination: one page, newest first. Next page = ?before=<sort_time of the
+    // last item you have>. Keeps the feed fast no matter how many posts exist.
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const before = req.query.before || null; // ISO timestamp cursor, or null for page 1
+    const following = req.query.scope === 'following';
+
+    // "Following" feed: only posts/retweets by people the viewer follows (plus
+    // the viewer's own). Requires login — logged-out gets an empty list.
+    if (following && !viewerId) return res.json([]);
+    const followFilter = (col) =>
+      following ? `WHERE ${col} = $1 OR ${col} IN (SELECT following_id FROM follows WHERE follower_id = $1)` : '';
 
     const result = await pool.query(
       `SELECT * FROM (
          SELECT ${POST_FIELDS}, NULL::text AS retweeted_by, p.created_at AS sort_time
-           FROM posts p JOIN users u ON u.id = p.user_id
+           FROM posts p JOIN users u ON u.id = p.user_id ${followFilter('p.user_id')}
          UNION ALL
          SELECT ${POST_FIELDS}, ru.username AS retweeted_by, r.created_at AS sort_time
            FROM retweets r
            JOIN posts p ON p.id = r.post_id
            JOIN users u ON u.id = p.user_id
-           JOIN users ru ON ru.id = r.user_id
+           JOIN users ru ON ru.id = r.user_id ${followFilter('r.user_id')}
        ) feed
        WHERE ($2::timestamptz IS NULL OR feed.sort_time < $2)
        ORDER BY feed.sort_time DESC, feed.id DESC

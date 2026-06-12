@@ -114,11 +114,15 @@ async function apiLogin(u, p) { if (USE_FAKE_DATA) return FAKE_USER; return (awa
 async function apiLogout() { if (USE_FAKE_DATA) return; await fetchJson('/api/auth/logout', { method: 'POST' }); }
 async function apiUpdateProfile(fields) { if (USE_FAKE_DATA) { FAKE_USER = { ...FAKE_USER, ...fields }; return FAKE_USER; } return (await fetchJson('/api/users/me', { method: 'PUT', body: JSON.stringify(fields) })).user; }
 
-async function apiGetFeed(before) {
+async function apiGetFeed(before, scope) {
   if (USE_FAKE_DATA) return [...FAKE_TWEETS];
-  const q = '?limit=20' + (before ? '&before=' + encodeURIComponent(before) : '');
+  let q = '?limit=20';
+  if (before) q += '&before=' + encodeURIComponent(before);
+  if (scope === 'following') q += '&scope=following';
   return await fetchJson('/api/posts' + q);
 }
+async function apiFollow(username) { if (USE_FAKE_DATA) return; await fetchJson('/api/users/' + encodeURIComponent(username) + '/follow', { method: 'POST' }); }
+async function apiUnfollow(username) { if (USE_FAKE_DATA) return; await fetchJson('/api/users/' + encodeURIComponent(username) + '/follow', { method: 'DELETE' }); }
 async function apiGetProfile(username) {
   if (USE_FAKE_DATA) {
     const posts = FAKE_TWEETS.filter((t) => t.username === username);
@@ -457,7 +461,7 @@ function AppearancePanel({ tweaks, onPick, onSet }) {
 }
 
 // ---- Screens ----
-function FeedScreen({ posts, currentUser, cards, onPost, handlers, go, onLoadMore, hasMore, loadingMore }) {
+function FeedScreen({ posts, currentUser, cards, onPost, handlers, go, onLoadMore, hasMore, loadingMore, scope, onScope }) {
   // Infinite scroll: when the sentinel scrolls into view, load the next page.
   const sentinel = useRef(null);
   useEffect(() => {
@@ -469,11 +473,19 @@ function FeedScreen({ posts, currentUser, cards, onPost, handlers, go, onLoadMor
     return () => io.disconnect();
   }, [hasMore, onLoadMore, posts.length]);
 
+  const emptyMsg = scope === 'following'
+    ? 'Your Following feed is empty — open a profile and Follow someone to fill it.'
+    : 'No tweets yet — post the first ✦';
+
   return (
     <div className="feed-col">
       <div className="col-head"><div><h1>Home</h1></div></div>
+      <div className="profile-tabs feed-scope">
+        <button className="p-tab" data-active={scope === 'all' ? '1' : '0'} onClick={() => onScope('all')}>For you</button>
+        <button className="p-tab" data-active={scope === 'following' ? '1' : '0'} onClick={() => onScope('following')}>Following</button>
+      </div>
       <div className={'feed-list' + (cards ? ' cards' : '')}>
-        <Compose currentUser={currentUser} onPost={onPost} />
+        {scope === 'all' && <Compose currentUser={currentUser} onPost={onPost} />}
         {posts.map((t) => (
           <React.Fragment key={(t.retweeted_by || 'orig') + '-' + t.id}>
             {t.retweeted_by && (
@@ -482,7 +494,7 @@ function FeedScreen({ posts, currentUser, cards, onPost, handlers, go, onLoadMor
             <Tweet tweet={t} currentUser={currentUser} isCard={cards} onOpenProfile={(h) => go('profile', h)} {...handlers} />
           </React.Fragment>
         ))}
-        {posts.length === 0 && <div className="empty">No tweets yet — post the first ✦</div>}
+        {posts.length === 0 && <div className="empty">{emptyMsg}</div>}
         {posts.length > 0 && hasMore && <div ref={sentinel} className="empty">{loadingMore ? 'Loading…' : ''}</div>}
         {posts.length > 0 && !hasMore && <div className="empty">You're all caught up ✦</div>}
       </div>
@@ -565,7 +577,16 @@ function ProfileScreen({ username, currentUser, cards, handlers, go }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [tab, setTab] = useState('tweets');
-  async function load() { try { setData(await apiGetProfile(username)); } catch (e) { setErr(e.message); } }
+  const [following, setFollowing] = useState(false);
+  const [followers, setFollowers] = useState(0);
+  async function load() {
+    try {
+      const d = await apiGetProfile(username);
+      setData(d);
+      setFollowing(!!d.user.is_following);
+      setFollowers(d.user.follower_count || 0);
+    } catch (e) { setErr(e.message); }
+  }
   useEffect(() => { setData(null); setErr(''); setTab('tweets'); load(); }, [username]);
 
   const localHandlers = { ...handlers, onOpenProfile: (h) => go('profile', h) };
@@ -576,6 +597,12 @@ function ProfileScreen({ username, currentUser, cards, handlers, go }) {
   const u = data.user;
   const isMe = currentUser && currentUser.username === u.username;
   const name = u.display_name || u.username;
+  async function toggleFollow() {
+    const on = !following;
+    setFollowing(on); setFollowers((c) => c + (on ? 1 : -1));
+    try { on ? await apiFollow(u.username) : await apiUnfollow(u.username); }
+    catch (e) { alert(e.message); setFollowing(!on); setFollowers((c) => c + (on ? -1 : 1)); }
+  }
   const bannerStyle = u.banner_url
     ? { backgroundImage: `url(${u.banner_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : { background: 'linear-gradient(120deg, var(--accent), var(--accent-2) 60%, var(--accent))' };
@@ -589,13 +616,16 @@ function ProfileScreen({ username, currentUser, cards, handlers, go }) {
       <div className="banner" style={bannerStyle}></div>
       <div className="profile-bar">
         <div className="profile-avatar"><Avatar user={u} size={104} /></div>
-        {isMe && <button className="edit-btn" onClick={() => go('settings')}>Edit profile</button>}
+        {isMe
+          ? <button className="edit-btn" onClick={() => go('settings')}>Edit profile</button>
+          : <button className="edit-btn" style={following ? {} : { background: 'var(--text)', color: 'var(--bg)', borderColor: 'transparent' }} onClick={toggleFollow}>{following ? 'Following' : 'Follow'}</button>}
       </div>
       <div className="profile-info">
         <div className="nm">{name}</div>
         <div className="hd">@{u.username}</div>
         {u.bio && <p className="bio">{u.bio}</p>}
         <div className="meta"><span><Icon name="cal" /> Joined {new Date(u.created_at).toLocaleDateString([], { month: 'long', year: 'numeric' })}</span></div>
+        <div className="profile-stats"><span><b>{fmt(u.following_count || 0)}</b> Following</span><span><b>{fmt(followers)}</b> Followers</span></div>
       </div>
       <div className="profile-tabs">
         <button className="p-tab" data-active={tab === 'tweets' ? '1' : '0'} onClick={() => setTab('tweets')}>Tweets</button>
@@ -839,6 +869,7 @@ function App() {
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [scope, setScope] = useState('all'); // 'all' (For you) or 'following'
   const [tweaks, setTweaks] = useState(() => ({ ...DEFAULT_TWEAKS, ...(loadTweaks() || {}) }));
   const savedRef = useRef(loadTweaks());
   const toastTimer = useRef();
@@ -846,8 +877,8 @@ function App() {
   const flash = (msg) => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 1600); };
 
   const PAGE = 20;
-  async function reloadFeed() {
-    const data = await apiGetFeed(null);
+  async function reloadFeed(sc = scope) {
+    const data = await apiGetFeed(null, sc);
     setPosts(data);
     setCursor(data.length ? data[data.length - 1].sort_time : null);
     setHasMore(data.length >= PAGE);
@@ -856,12 +887,13 @@ function App() {
     if (!hasMore || loadingMore || !cursor) return;
     setLoadingMore(true);
     try {
-      const data = await apiGetFeed(cursor);
+      const data = await apiGetFeed(cursor, scope);
       setPosts((ps) => [...ps, ...data]);
       setCursor(data.length ? data[data.length - 1].sort_time : cursor);
       setHasMore(data.length >= PAGE);
     } catch (e) { console.error(e); } finally { setLoadingMore(false); }
   }
+  function switchScope(sc) { if (sc === scope) return; setScope(sc); reloadFeed(sc); }
   function patchPosts(id, fn) { setPosts((ps) => ps.map((p) => (p.id === id ? fn(p) : p))); }
 
   useEffect(() => {
@@ -958,7 +990,7 @@ function App() {
   } else if (route.name === 'profile') {
     screen = <ProfileScreen username={route.params || currentUser.username} currentUser={currentUser} cards={cards} handlers={genHandlers} go={go} />;
   } else {
-    screen = <FeedScreen posts={posts} currentUser={currentUser} cards={cards} onPost={postTweet} handlers={feedHandlers} go={go} onLoadMore={loadMore} hasMore={hasMore} loadingMore={loadingMore} />;
+    screen = <FeedScreen posts={posts} currentUser={currentUser} cards={cards} onPost={postTweet} handlers={feedHandlers} go={go} onLoadMore={loadMore} hasMore={hasMore} loadingMore={loadingMore} scope={scope} onScope={switchScope} />;
   }
 
   return wrap(

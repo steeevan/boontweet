@@ -99,6 +99,22 @@ CREATE INDEX IF NOT EXISTS idx_retweets_post_id ON retweets (post_id);
 
 
 -- ---------------------------------------------------------------------------
+-- follows — one row per "follower follows following" relationship.
+-- ---------------------------------------------------------------------------
+-- UNIQUE(follower_id, following_id) prevents following the same person twice.
+-- The "Following" feed = posts by everyone in your follow list.
+CREATE TABLE IF NOT EXISTS follows (
+  id           SERIAL  PRIMARY KEY,
+  follower_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  following_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (follower_id, following_id)
+);
+CREATE INDEX IF NOT EXISTS idx_follows_follower  ON follows (follower_id);
+CREATE INDEX IF NOT EXISTS idx_follows_following ON follows (following_id);
+
+
+-- ---------------------------------------------------------------------------
 -- media — uploaded images, stored directly in the database.
 -- ---------------------------------------------------------------------------
 -- We keep the raw image bytes in a BYTEA column and serve them back at

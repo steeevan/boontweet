@@ -81,25 +81,62 @@ router.put('/me', requireLogin, async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/users/:username/follow  /  DELETE … — follow / unfollow a user.
+// ---------------------------------------------------------------------------
+router.post('/:username/follow', requireLogin, async (req, res, next) => {
+  try {
+    const target = await pool.query('SELECT id FROM users WHERE username = $1', [req.params.username]);
+    if (target.rows.length === 0) return res.status(404).json({ error: 'User not found.' });
+    const targetId = target.rows[0].id;
+    if (targetId === req.session.userId) return res.status(400).json({ error: "You can't follow yourself." });
+    // ON CONFLICT DO NOTHING: following twice is harmless (UNIQUE constraint).
+    await pool.query(
+      'INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [req.session.userId, targetId]
+    );
+    res.status(201).json({ following: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:username/follow', requireLogin, async (req, res, next) => {
+  try {
+    const target = await pool.query('SELECT id FROM users WHERE username = $1', [req.params.username]);
+    if (target.rows.length === 0) return res.status(404).json({ error: 'User not found.' });
+    await pool.query('DELETE FROM follows WHERE follower_id = $1 AND following_id = $2', [
+      req.session.userId,
+      target.rows[0].id,
+    ]);
+    res.status(200).json({ following: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/users/:username  -> { user, posts }
 // ---------------------------------------------------------------------------
 router.get('/:username', async (req, res, next) => {
   try {
     const { username } = req.params;
+    const viewerId = req.session.userId || null;
 
+    // User info + follower/following counts + does the viewer follow them.
     const userResult = await pool.query(
-      `SELECT ${USER_COLS} FROM users WHERE username = $1`,
-      [username]
+      `SELECT ${USER_COLS},
+         (SELECT COUNT(*) FROM follows f WHERE f.following_id = users.id)::int AS follower_count,
+         (SELECT COUNT(*) FROM follows f WHERE f.follower_id  = users.id)::int AS following_count,
+         EXISTS (SELECT 1 FROM follows f WHERE f.following_id = users.id AND f.follower_id = $2) AS is_following
+       FROM users WHERE username = $1`,
+      [username, viewerId]
     );
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found.' });
     }
     const user = userResult.rows[0];
 
-    // The user's own tweets + the tweets they retweeted (same UNION idea as
-    // the main feed). $1 = the VIEWER (for liked/retweeted flags),
-    // $2 = the profile owner.
-    const viewerId = req.session.userId || null;
+    // The user's own tweets + the tweets they retweeted. $1 = viewer, $2 = owner.
     const postsResult = await pool.query(
       `SELECT ${POST_FIELDS}, NULL::text AS retweeted_by, p.created_at AS sort_time
          FROM posts p JOIN users u ON u.id = p.user_id
