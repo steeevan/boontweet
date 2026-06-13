@@ -533,7 +533,7 @@ function AppearancePanel({ tweaks, onPick, onSet }) {
 }
 
 // ---- Screens ----
-function FeedScreen({ posts, currentUser, cards, onPost, handlers, go, onLoadMore, hasMore, loadingMore, scope, onScope }) {
+function FeedScreen({ posts, currentUser, cards, onPost, handlers, go, onLoadMore, hasMore, loadingMore, scope, onScope, newCount, onShowNew }) {
   // Infinite scroll: when the sentinel scrolls into view, load the next page.
   const sentinel = useRef(null);
   useEffect(() => {
@@ -552,6 +552,7 @@ function FeedScreen({ posts, currentUser, cards, onPost, handlers, go, onLoadMor
   return (
     <div className="feed-col">
       <div className="col-head"><div><h1>Home</h1></div></div>
+      {newCount > 0 && <button className="newposts-pill" onClick={onShowNew}>↑ {newCount} new {newCount === 1 ? 'tweet' : 'tweets'}</button>}
       <div className="profile-tabs feed-scope">
         <button className="p-tab" data-active={scope === 'all' ? '1' : '0'} onClick={() => onScope('all')}>For you</button>
         <button className="p-tab" data-active={scope === 'following' ? '1' : '0'} onClick={() => onScope('following')}>Following</button>
@@ -1281,6 +1282,7 @@ function App() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [scope, setScope] = useState('all'); // 'all' (For you) or 'following'
   const [notifUnread, setNotifUnread] = useState(0);
+  const [newCount, setNewCount] = useState(0);
   const [tweaks, setTweaks] = useState(() => ({ ...DEFAULT_TWEAKS, ...(loadTweaks() || {}) }));
   const savedRef = useRef(loadTweaks());
   const toastTimer = useRef();
@@ -1297,6 +1299,7 @@ function App() {
     setPosts(data);
     setCursor(cursorOf(data));
     setHasMore(data.length >= PAGE);
+    setNewCount(0); // you're now seeing the latest
   }
   async function loadMore() {
     if (!hasMore || loadingMore || !cursor) return;
@@ -1311,6 +1314,7 @@ function App() {
     } catch (e) { console.error(e); } finally { setLoadingMore(false); }
   }
   function switchScope(sc) { if (sc === scope) return; setScope(sc); setCursor(null); setHasMore(true); reloadFeed(sc); }
+  function showNew() { reloadFeed(); window.scrollTo({ top: 0 }); }
   function patchPosts(id, fn) { setPosts((ps) => ps.map((p) => (p.id === id ? fn(p) : p))); }
 
   useEffect(() => {
@@ -1374,6 +1378,19 @@ function App() {
     return () => { alive = false; clearInterval(id); };
   }, [currentUser]);
 
+  // Live updates over Server-Sent Events: bump the notification badge and show
+  // a "new tweets" pill the instant they happen (no refresh). EventSource
+  // auto-reconnects if the connection drops.
+  useEffect(() => {
+    if (!currentUser || USE_FAKE_DATA || typeof EventSource === 'undefined') return;
+    const es = new EventSource('/api/stream');
+    es.addEventListener('notification', () => setNotifUnread((n) => n + 1));
+    es.addEventListener('newpost', (e) => {
+      try { const d = JSON.parse(e.data); if (d.username !== currentUser.username) setNewCount((c) => c + 1); } catch (x) {}
+    });
+    return () => es.close();
+  }, [currentUser]);
+
   // Apply theme + layout to <html> (NOT an inner div). CSS custom properties
   // only cascade downward, so the themed vars must live at/above <body> for
   // style.css's `body { background/color/font: var(...) }` rules to pick up the
@@ -1430,7 +1447,7 @@ function App() {
   } else if (route.name === 'profile') {
     screen = <ProfileScreen username={route.params || currentUser.username} currentUser={currentUser} cards={cards} handlers={genHandlers} go={go} />;
   } else {
-    screen = <FeedScreen posts={posts} currentUser={currentUser} cards={cards} onPost={postTweet} handlers={feedHandlers} go={go} onLoadMore={loadMore} hasMore={hasMore} loadingMore={loadingMore} scope={scope} onScope={switchScope} />;
+    screen = <FeedScreen posts={posts} currentUser={currentUser} cards={cards} onPost={postTweet} handlers={feedHandlers} go={go} onLoadMore={loadMore} hasMore={hasMore} loadingMore={loadingMore} scope={scope} onScope={switchScope} newCount={newCount} onShowNew={showNew} />;
   }
 
   return wrap(

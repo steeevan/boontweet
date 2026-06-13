@@ -9,6 +9,7 @@ const express = require('express');
 const pool = require('../db');
 const { requireLogin } = require('./auth');
 const { notify, notifyMentions } = require('./notifications');
+const { emitAll } = require('../events');
 
 const router = express.Router();
 
@@ -158,6 +159,7 @@ router.post('/', requireLogin, async (req, res, next) => {
     );
     const post = await fetchPost(req.session.userId, inserted.rows[0].id);
     notifyMentions(content, req.session.userId, post.id); // @mentions in the tweet
+    emitAll('newpost', { username: req.session.username }); // live "new tweets" pill
     res.status(201).json(post);
   } catch (err) {
     next(err);

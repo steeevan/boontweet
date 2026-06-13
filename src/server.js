@@ -33,6 +33,7 @@ const sportsRoutes = require('./routes/sports');
 const searchRoutes = require('./routes/search');
 const exploreRoutes = require('./routes/explore');
 const notificationRoutes = require('./routes/notifications');
+const streamRoutes = require('./routes/stream');
 
 const app = express();
 
@@ -145,6 +146,7 @@ app.use('/api/sports', sportsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/explore', exploreRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/stream', streamRoutes);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 

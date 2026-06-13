@@ -6,6 +6,7 @@
 const express = require('express');
 const pool = require('../db');
 const { requireLogin } = require('./auth');
+const { emitToUser } = require('../events');
 
 const router = express.Router();
 
@@ -19,6 +20,7 @@ async function notify({ userId, actorId, type, postId = null }) {
       'INSERT INTO notifications (user_id, actor_id, type, post_id) VALUES ($1, $2, $3, $4)',
       [userId, actorId, type, postId]
     );
+    emitToUser(userId, 'notification', { type }); // live badge bump
   } catch (err) {
     console.error('notify failed:', err.message);
   }
