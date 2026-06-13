@@ -8,6 +8,7 @@
 const express = require('express');
 const pool = require('../db');
 const { requireLogin } = require('./auth');
+const { notify, notifyMentions } = require('./notifications');
 
 const router = express.Router();
 
@@ -118,6 +119,21 @@ router.get('/', async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/posts/:id  -> a single tweet (used to open one from a notification).
+// ---------------------------------------------------------------------------
+router.get('/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid post id.' });
+    const post = await fetchPost(req.session.userId || null, id);
+    if (!post) return res.status(404).json({ error: 'Post not found.' });
+    res.json(post);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/posts  -> create a tweet. Must be logged in.
 // ---------------------------------------------------------------------------
 router.post('/', requireLogin, async (req, res, next) => {
@@ -141,6 +157,7 @@ router.post('/', requireLogin, async (req, res, next) => {
       [req.session.userId, content, imageUrl]
     );
     const post = await fetchPost(req.session.userId, inserted.rows[0].id);
+    notifyMentions(content, req.session.userId, post.id); // @mentions in the tweet
     res.status(201).json(post);
   } catch (err) {
     next(err);
@@ -178,7 +195,7 @@ router.post('/:id/like', requireLogin, async (req, res, next) => {
     const postId = Number(req.params.id);
     if (!Number.isInteger(postId)) return res.status(400).json({ error: 'Invalid post id.' });
 
-    const post = await pool.query('SELECT 1 FROM posts WHERE id = $1', [postId]);
+    const post = await pool.query('SELECT user_id FROM posts WHERE id = $1', [postId]);
     if (post.rows.length === 0) return res.status(404).json({ error: 'Post not found.' });
 
     // ON CONFLICT DO NOTHING: liking twice is harmless (UNIQUE constraint).
@@ -186,6 +203,7 @@ router.post('/:id/like', requireLogin, async (req, res, next) => {
       'INSERT INTO likes (user_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [req.session.userId, postId]
     );
+    notify({ userId: post.rows[0].user_id, actorId: req.session.userId, type: 'like', postId });
     res.status(201).json({ liked: true });
   } catch (err) {
     next(err);
@@ -211,13 +229,14 @@ router.post('/:id/retweet', requireLogin, async (req, res, next) => {
     const postId = Number(req.params.id);
     if (!Number.isInteger(postId)) return res.status(400).json({ error: 'Invalid post id.' });
 
-    const post = await pool.query('SELECT 1 FROM posts WHERE id = $1', [postId]);
+    const post = await pool.query('SELECT user_id FROM posts WHERE id = $1', [postId]);
     if (post.rows.length === 0) return res.status(404).json({ error: 'Post not found.' });
 
     await pool.query(
       'INSERT INTO retweets (user_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [req.session.userId, postId]
     );
+    notify({ userId: post.rows[0].user_id, actorId: req.session.userId, type: 'retweet', postId });
     res.status(201).json({ retweeted: true });
   } catch (err) {
     next(err);
@@ -272,13 +291,15 @@ router.post('/:id/comments', requireLogin, async (req, res, next) => {
       return res.status(400).json({ error: `A comment can be at most ${MAX_COMMENT_LENGTH} characters.` });
     }
 
-    const post = await pool.query('SELECT 1 FROM posts WHERE id = $1', [postId]);
+    const post = await pool.query('SELECT user_id FROM posts WHERE id = $1', [postId]);
     if (post.rows.length === 0) return res.status(404).json({ error: 'Post not found.' });
 
     const inserted = await pool.query(
       'INSERT INTO comments (post_id, user_id, content) VALUES ($1, $2, $3) RETURNING id',
       [postId, req.session.userId, content]
     );
+    notify({ userId: post.rows[0].user_id, actorId: req.session.userId, type: 'reply', postId });
+    notifyMentions(content, req.session.userId, postId); // @mentions in the reply
     // Return the same shape GET /comments uses (incl. display_name + avatar).
     const full = await pool.query(
       `SELECT c.id, c.content, c.created_at, u.username, u.display_name, u.avatar_url, u.avatar_anim

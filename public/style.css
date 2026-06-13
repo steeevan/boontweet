@@ -939,6 +939,25 @@ textarea.field { resize: vertical; min-height: 84px; line-height: 1.45; }
 .g2048-msg { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 14px; font-weight: 700; }
 
 /* ============================================================
+   NOTIFICATIONS — bell badge + notification rows
+   ============================================================ */
+.nav-badge {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px;
+  padding: 0 5px; border-radius: 999px; background: var(--like); color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 1; margin-left: 6px;
+}
+.nav-bell, .mnav-item { position: relative; }
+.nav-bell .nav-badge, .mnav-item .nav-badge { position: absolute; top: 3px; right: 3px; margin: 0; }
+
+.notif { display: flex; gap: 12px; padding: 14px var(--pad); border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.12s; }
+.notif:hover { background: var(--hover); }
+.notif.unread { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.notif-body { flex: 1; min-width: 0; }
+.notif-text { font-size: 14.5px; line-height: 1.4; }
+.notif-time { color: var(--muted); font-weight: 400; }
+.notif-snippet { color: var(--muted); font-size: 13.5px; margin-top: 3px; overflow-wrap: anywhere; }
+
+/* ============================================================
    MOBILE — phone layout + bottom tab bar (≤ 640px)
    ============================================================ */
 .mobile-nav { display: none; }

@@ -163,6 +163,10 @@ async function apiVideos() {
   if (USE_FAKE_DATA) return { videos: [] };
   return await fetchJson('/api/explore/videos');
 }
+async function apiNotifications() { if (USE_FAKE_DATA) return []; return await fetchJson('/api/notifications'); }
+async function apiNotifUnread() { if (USE_FAKE_DATA) return 0; return (await fetchJson('/api/notifications/unread-count')).count; }
+async function apiNotifMarkRead() { if (USE_FAKE_DATA) return; await fetchJson('/api/notifications/read', { method: 'POST' }); }
+async function apiGetPost(id) { if (USE_FAKE_DATA) return FAKE_TWEETS.find((t) => t.id === id); return await fetchJson('/api/posts/' + id); }
 
 // ===========================================================================
 // PART 3 — helpers, components, screens, controller
@@ -371,12 +375,13 @@ const NAV = [
   { id: 'feed', label: 'Home', icon: 'home' },
   { id: 'search', label: 'Search', icon: 'search' },
   { id: 'explore', label: 'Explore', icon: 'explore' },
+  { id: 'notifications', label: 'Notifications', icon: 'bell' },
   { id: 'sports', label: 'Sports', icon: 'trophy' },
   { id: 'profile', label: 'Profile', icon: 'user' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
-function Sidebar({ route, currentUser, go, onCompose, onLogout }) {
+function Sidebar({ route, currentUser, go, onCompose, onLogout, notifUnread }) {
   return (
     <nav className="sidebar collapsed-labels">
       <div className="brand">
@@ -387,6 +392,7 @@ function Sidebar({ route, currentUser, go, onCompose, onLogout }) {
         <button key={n.id} className="nav-item" data-active={route.name === n.id ? '1' : '0'}
           onClick={() => go(n.id, n.id === 'profile' ? currentUser.username : null)}>
           <Icon name={n.icon} /><span className="nav-label">{n.label}</span>
+          {n.id === 'notifications' && notifUnread > 0 && <span className="nav-badge">{notifUnread > 99 ? '99+' : notifUnread}</span>}
         </button>
       ))}
       <button className="compose-full" onClick={onCompose}><Icon name="feather" /><span>Tweet</span></button>
@@ -402,7 +408,7 @@ function Sidebar({ route, currentUser, go, onCompose, onLogout }) {
   );
 }
 
-function TopNav({ route, currentUser, go }) {
+function TopNav({ route, currentUser, go, notifUnread }) {
   return (
     <div className="topnav">
       <div className="topnav-bar">
@@ -412,12 +418,15 @@ function TopNav({ route, currentUser, go }) {
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button className="iconbtn" title="Search" onClick={() => go('search')}><Icon name="search" /></button>
+          <button className="iconbtn nav-bell" title="Notifications" onClick={() => go('notifications')}>
+            <Icon name="bell" />{notifUnread > 0 && <span className="nav-badge">{notifUnread > 99 ? '99+' : notifUnread}</span>}
+          </button>
           <button className="iconbtn" title="Settings" onClick={() => go('settings')}><Icon name="settings" /></button>
           <button className="iconbtn" onClick={() => go('profile', currentUser.username)} aria-label="Profile"><Avatar user={currentUser} size={34} /></button>
         </div>
       </div>
       <div className="topnav-tabs">
-        {NAV.filter((n) => n.id !== 'settings' && n.id !== 'search').map((n) => (
+        {NAV.filter((n) => n.id !== 'settings' && n.id !== 'search' && n.id !== 'notifications').map((n) => (
           <button key={n.id} className="top-tab" data-active={route.name === n.id ? '1' : '0'}
             onClick={() => go(n.id, n.id === 'profile' ? currentUser.username : null)}>{n.label}</button>
         ))}
@@ -427,10 +436,11 @@ function TopNav({ route, currentUser, go }) {
 }
 
 // Bottom tab bar — only visible on phones (CSS shows it under 640px).
-function MobileNav({ route, currentUser, go }) {
+function MobileNav({ route, currentUser, go, notifUnread }) {
   const items = [
     { id: 'feed', icon: 'home' },
     { id: 'search', icon: 'search' },
+    { id: 'notifications', icon: 'bell' },
     { id: 'explore', icon: 'explore' },
     { id: 'sports', icon: 'trophy' },
     { id: 'profile', icon: 'user' },
@@ -441,6 +451,7 @@ function MobileNav({ route, currentUser, go }) {
         <button key={n.id} className="mnav-item" data-active={route.name === n.id ? '1' : '0'}
           aria-label={n.id} onClick={() => go(n.id, n.id === 'profile' ? currentUser.username : null)}>
           <Icon name={n.icon} />
+          {n.id === 'notifications' && notifUnread > 0 && <span className="nav-badge">{notifUnread > 99 ? '99+' : notifUnread}</span>}
         </button>
       ))}
     </nav>
@@ -1127,6 +1138,38 @@ function ExploreScreen({ initialTab, go }) {
   );
 }
 
+const NOTIF_VERB = {
+  like: 'liked your tweet', reply: 'replied to your tweet', follow: 'followed you',
+  retweet: 'retweeted your tweet', mention: 'mentioned you',
+};
+function NotificationsScreen({ currentUser, go, onRead }) {
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    apiNotifications().then(setItems).catch(() => setItems([]));
+    apiNotifMarkRead().then(() => onRead()).catch(() => {});
+  }, []);
+  async function open(n) {
+    if (n.post_id) { try { go('detail', await apiGetPost(n.post_id)); } catch (e) { go('profile', n.actor_username); } }
+    else go('profile', n.actor_username);
+  }
+  return (
+    <div className="feed-col">
+      <div className="col-head"><div><h1>Notifications</h1></div></div>
+      {items === null ? <div className="empty">Loading…</div>
+        : items.length === 0 ? <div className="empty"><div className="big">🔔</div>Nothing yet — likes, replies, follows and mentions show up here.</div>
+        : items.map((n) => (
+          <div className={'notif' + (n.read ? '' : ' unread')} key={n.id} onClick={() => open(n)}>
+            <Avatar user={{ username: n.actor_username, display_name: n.actor_display_name, avatar_url: n.actor_avatar_url }} size={40} />
+            <div className="notif-body">
+              <div className="notif-text"><b>{n.actor_display_name || n.actor_username}</b> {NOTIF_VERB[n.type] || 'interacted'} <span className="notif-time">· {timeAgo(n.created_at)}</span></div>
+              {n.post_snippet && <div className="notif-snippet">{n.post_snippet}</div>}
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function SettingsScreen({ currentUser, onSaved, onLogout, go }) {
   const [displayName, setDisplayName] = useState(currentUser.display_name || '');
   const [bio, setBio] = useState(currentUser.bio || '');
@@ -1237,6 +1280,7 @@ function App() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [scope, setScope] = useState('all'); // 'all' (For you) or 'following'
+  const [notifUnread, setNotifUnread] = useState(0);
   const [tweaks, setTweaks] = useState(() => ({ ...DEFAULT_TWEAKS, ...(loadTweaks() || {}) }));
   const savedRef = useRef(loadTweaks());
   const toastTimer = useRef();
@@ -1319,6 +1363,17 @@ function App() {
 
   const cards = tweaks.cards !== 'rows';
 
+  // Poll the unread notification count for the bell badge (Phase 2 swaps this
+  // for a live Server-Sent-Events push).
+  useEffect(() => {
+    if (!currentUser) { setNotifUnread(0); return; }
+    let alive = true;
+    const tick = () => apiNotifUnread().then((n) => { if (alive) setNotifUnread(n); }).catch(() => {});
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => { alive = false; clearInterval(id); };
+  }, [currentUser]);
+
   // Apply theme + layout to <html> (NOT an inner div). CSS custom properties
   // only cascade downward, so the themed vars must live at/above <body> for
   // style.css's `body { background/color/font: var(...) }` rules to pick up the
@@ -1366,6 +1421,8 @@ function App() {
     screen = <SportsScreen />;
   } else if (route.name === 'explore') {
     screen = <ExploreScreen initialTab={route.params} go={go} />;
+  } else if (route.name === 'notifications') {
+    screen = <NotificationsScreen currentUser={currentUser} go={go} onRead={() => setNotifUnread(0)} />;
   } else if (route.name === 'search') {
     screen = <SearchScreen initialQuery={route.params} currentUser={currentUser} cards={cards} handlers={genHandlers} go={go} />;
   } else if (route.name === 'settings') {
@@ -1379,13 +1436,13 @@ function App() {
   return wrap(
     <div className="stage">
       <div className="app">
-        <Sidebar route={route} currentUser={currentUser} go={go} onCompose={() => go('feed')} onLogout={handleLogout} />
-        <TopNav route={route} currentUser={currentUser} go={go} />
+        <Sidebar route={route} currentUser={currentUser} go={go} onCompose={() => go('feed')} onLogout={handleLogout} notifUnread={notifUnread} />
+        <TopNav route={route} currentUser={currentUser} go={go} notifUnread={notifUnread} />
         {screen}
         <Aside go={go} />
       </div>
       {toast && <div className="toast">{toast}</div>}
-      <MobileNav route={route} currentUser={currentUser} go={go} />
+      <MobileNav route={route} currentUser={currentUser} go={go} notifUnread={notifUnread} />
     </div>
   );
 }

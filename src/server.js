@@ -32,6 +32,7 @@ const mediaRoutes = require('./routes/media');
 const sportsRoutes = require('./routes/sports');
 const searchRoutes = require('./routes/search');
 const exploreRoutes = require('./routes/explore');
+const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -143,6 +144,7 @@ app.use('/api/media', mediaRoutes);
 app.use('/api/sports', sportsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/explore', exploreRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 

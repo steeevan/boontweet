@@ -115,6 +115,23 @@ CREATE INDEX IF NOT EXISTS idx_follows_following ON follows (following_id);
 
 
 -- ---------------------------------------------------------------------------
+-- notifications — one row per thing that happened to you.
+-- ---------------------------------------------------------------------------
+-- user_id = who receives it, actor_id = who caused it. type is like / reply /
+-- follow / retweet / mention. post_id links to the relevant tweet (if any).
+CREATE TABLE IF NOT EXISTS notifications (
+  id         SERIAL      PRIMARY KEY,
+  user_id    INTEGER     NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_id   INTEGER     NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type       VARCHAR(20) NOT NULL,
+  post_id    INTEGER     REFERENCES posts(id) ON DELETE CASCADE,
+  read       BOOLEAN     NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, created_at DESC);
+
+
+-- ---------------------------------------------------------------------------
 -- media — uploaded images, stored directly in the database.
 -- ---------------------------------------------------------------------------
 -- We keep the raw image bytes in a BYTEA column and serve them back at

@@ -12,6 +12,7 @@ const { requireLogin, USER_COLS } = require('./auth');
 // Reuse the exact post columns the feed uses, so a tweet looks identical
 // whether you see it in the feed or on a profile.
 const { POST_FIELDS } = require('./posts');
+const { notify } = require('./notifications');
 
 const router = express.Router();
 
@@ -94,6 +95,7 @@ router.post('/:username/follow', requireLogin, async (req, res, next) => {
       'INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [req.session.userId, targetId]
     );
+    notify({ userId: targetId, actorId: req.session.userId, type: 'follow' });
     res.status(201).json({ following: true });
   } catch (err) {
     next(err);
