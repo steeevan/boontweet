@@ -1,10 +1,12 @@
 // service-worker.js — makes BoonTweet installable + work offline / load faster.
 // Strategy:
+//   - cross-origin (CDN fonts/React/Babel, flags, thumbnails, linked images):
+//     NOT intercepted — the browser loads them normally. (Fetching them from
+//     the SW would be a connect-src request, which our CSP restricts to 'self'.)
 //   - /api/*           : never cached (always hit the network — live data)
-//   - cross-origin (CDN: React, Babel, fonts): cache-first (versioned/immutable)
 //   - same-origin shell (html/css/jsx): network-first, fall back to cache,
-//     then to the cached index.html (so an offline launch still boots).
-const CACHE = 'boontweet-v2';
+//     then to the cached index.html (so an offline launch still boots the UI).
+const CACHE = 'boontweet-v3';
 const SHELL = ['/', '/index.html', '/style.css', '/app.jsx', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', (e) => {
@@ -24,26 +26,15 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return; // never touch mutations
   const url = new URL(req.url);
 
-  if (url.origin === location.origin && url.pathname.startsWith('/api/')) return; // live data
+  // Only handle SAME-ORIGIN requests. Cross-origin assets (Google Fonts, unpkg
+  // React/Babel, flag images, video thumbnails, externally-linked images) are
+  // left to the browser to load normally via their <link>/<script>/<img> tags.
+  // We must NOT fetch() them from the SW: that's a connect-src request, which
+  // our CSP restricts to 'self' — doing so would fail and break those assets.
+  if (url.origin !== location.origin) return;
+  if (url.pathname.startsWith('/api/')) return; // live data: always network
 
-  if (url.origin !== location.origin) {
-    // CDN assets (unpkg, Google Fonts): stale-while-revalidate. Serve the cached
-    // copy instantly for speed, but always refresh it in the background so we're
-    // never pinned to an old React/Babel (these are rolling-tag URLs).
-    e.respondWith(
-      caches.match(req).then((hit) => {
-        const network = fetch(req).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-          return res;
-        }).catch(() => hit);
-        return hit || network;
-      })
-    );
-    return;
-  }
-
-  // Same-origin app shell: network-first with cache fallback.
+  // App shell: network-first, fall back to cache, then to the cached index.html.
   e.respondWith(
     fetch(req).then((res) => {
       const copy = res.clone();
